@@ -1,0 +1,302 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+/*
+ * ASCEND BUSINESS MASTERY — design tokens
+ *
+ * Dark-first. `:root` IS the dark theme; `.light` opts out.
+ * Aesthetic target: Linear / Notion / modern developer documentation.
+ * Near-neutral cool greys, one confident accent, restrained saturation.
+ */
+
+@custom-variant light (&:where(.light, .light *));
+
+:root {
+  /* Surfaces — layered from deepest to highest elevation */
+  --background: oklch(0.155 0.005 285);
+  --surface-1: oklch(0.185 0.006 285);
+  --surface-2: oklch(0.215 0.007 285);
+  --surface-3: oklch(0.248 0.008 285);
+
+  --foreground: oklch(0.967 0.002 285);
+  --muted: oklch(0.215 0.007 285);
+  --muted-foreground: oklch(0.672 0.013 286);
+  --subtle-foreground: oklch(0.55 0.012 286);
+
+  --card: oklch(0.185 0.006 285);
+  --card-foreground: var(--foreground);
+  --popover: oklch(0.198 0.007 285);
+  --popover-foreground: var(--foreground);
+
+  --border: oklch(0.278 0.009 286);
+  --border-strong: oklch(0.34 0.011 286);
+  --input: oklch(0.235 0.008 286);
+  --ring: oklch(0.62 0.176 277);
+
+  /* Brand accent — Ascend indigo */
+  --primary: oklch(0.629 0.176 277);
+  --primary-foreground: oklch(0.145 0.01 285);
+  --primary-muted: oklch(0.629 0.176 277 / 0.14);
+
+  --secondary: oklch(0.235 0.008 286);
+  --secondary-foreground: var(--foreground);
+  --accent: oklch(0.248 0.01 286);
+  --accent-foreground: var(--foreground);
+
+  /* Semantic status */
+  --success: oklch(0.7 0.16 155);
+  --success-foreground: oklch(0.16 0.02 155);
+  --success-muted: oklch(0.7 0.16 155 / 0.14);
+  --warning: oklch(0.79 0.15 78);
+  --warning-foreground: oklch(0.2 0.03 78);
+  --warning-muted: oklch(0.79 0.15 78 / 0.14);
+  --destructive: oklch(0.63 0.2 22);
+  --destructive-foreground: oklch(0.97 0.01 22);
+  --destructive-muted: oklch(0.63 0.2 22 / 0.14);
+  --info: oklch(0.7 0.13 232);
+  --info-foreground: oklch(0.16 0.02 232);
+  --info-muted: oklch(0.7 0.13 232 / 0.14);
+
+  /* Skill-branch hues — used by the skill tree and progress charts.
+     Chosen for even perceptual spacing and dark/light legibility. */
+  --skill-web: oklch(0.68 0.15 255);
+  --skill-crm: oklch(0.7 0.14 310);
+  --skill-automation: oklch(0.72 0.15 190);
+  --skill-ai: oklch(0.68 0.17 285);
+  --skill-api: oklch(0.72 0.14 220);
+  --skill-security: oklch(0.68 0.16 25);
+  --skill-sales: oklch(0.75 0.15 95);
+  --skill-seo: oklch(0.74 0.15 145);
+  --skill-support: oklch(0.72 0.13 175);
+  --skill-voice: oklch(0.71 0.16 340);
+  --skill-operations: oklch(0.7 0.1 60);
+  --skill-leadership: oklch(0.72 0.13 40);
+
+  /* Data-visualisation sequence (categorical, in order) */
+  --chart-1: oklch(0.629 0.176 277);
+  --chart-2: oklch(0.72 0.15 190);
+  --chart-3: oklch(0.75 0.15 95);
+  --chart-4: oklch(0.7 0.14 330);
+  --chart-5: oklch(0.7 0.16 155);
+  --chart-6: oklch(0.68 0.16 25);
+
+  --radius: 0.625rem;
+}
+
+.light {
+  --background: oklch(0.994 0.001 285);
+  --surface-1: oklch(1 0 0);
+  --surface-2: oklch(0.976 0.002 285);
+  --surface-3: oklch(0.955 0.003 285);
+
+  --foreground: oklch(0.205 0.008 285);
+  --muted: oklch(0.968 0.002 285);
+  --muted-foreground: oklch(0.5 0.014 286);
+  --subtle-foreground: oklch(0.6 0.012 286);
+
+  --card: oklch(1 0 0);
+  --card-foreground: var(--foreground);
+  --popover: oklch(1 0 0);
+  --popover-foreground: var(--foreground);
+
+  --border: oklch(0.913 0.004 286);
+  --border-strong: oklch(0.86 0.006 286);
+  --input: oklch(0.945 0.003 286);
+  --ring: oklch(0.58 0.19 277);
+
+  --primary: oklch(0.548 0.196 277);
+  --primary-foreground: oklch(0.99 0.005 277);
+  --primary-muted: oklch(0.548 0.196 277 / 0.1);
+
+  --secondary: oklch(0.968 0.002 285);
+  --secondary-foreground: var(--foreground);
+  --accent: oklch(0.958 0.003 286);
+  --accent-foreground: var(--foreground);
+
+  --success: oklch(0.52 0.14 155);
+  --success-foreground: oklch(0.99 0.01 155);
+  --success-muted: oklch(0.52 0.14 155 / 0.1);
+  --warning: oklch(0.62 0.13 78);
+  --warning-foreground: oklch(0.99 0.01 78);
+  --warning-muted: oklch(0.62 0.13 78 / 0.12);
+  --destructive: oklch(0.55 0.21 25);
+  --destructive-foreground: oklch(0.99 0.01 25);
+  --destructive-muted: oklch(0.55 0.21 25 / 0.1);
+  --info: oklch(0.55 0.13 232);
+  --info-foreground: oklch(0.99 0.01 232);
+  --info-muted: oklch(0.55 0.13 232 / 0.1);
+
+  --skill-web: oklch(0.55 0.16 255);
+  --skill-crm: oklch(0.55 0.15 310);
+  --skill-automation: oklch(0.55 0.13 190);
+  --skill-ai: oklch(0.54 0.18 285);
+  --skill-api: oklch(0.55 0.14 220);
+  --skill-security: oklch(0.55 0.17 25);
+  --skill-sales: oklch(0.58 0.14 95);
+  --skill-seo: oklch(0.53 0.15 145);
+  --skill-support: oklch(0.54 0.12 175);
+  --skill-voice: oklch(0.55 0.17 340);
+  --skill-operations: oklch(0.55 0.1 60);
+  --skill-leadership: oklch(0.56 0.13 40);
+
+  --chart-1: oklch(0.548 0.196 277);
+  --chart-2: oklch(0.55 0.13 190);
+  --chart-3: oklch(0.58 0.14 95);
+  --chart-4: oklch(0.55 0.15 330);
+  --chart-5: oklch(0.52 0.14 155);
+  --chart-6: oklch(0.55 0.17 25);
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-surface-1: var(--surface-1);
+  --color-surface-2: var(--surface-2);
+  --color-surface-3: var(--surface-3);
+
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-subtle-foreground: var(--subtle-foreground);
+
+  --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary-muted: var(--primary-muted);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+
+  --color-success: var(--success);
+  --color-success-foreground: var(--success-foreground);
+  --color-success-muted: var(--success-muted);
+  --color-warning: var(--warning);
+  --color-warning-foreground: var(--warning-foreground);
+  --color-warning-muted: var(--warning-muted);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-destructive-muted: var(--destructive-muted);
+  --color-info: var(--info);
+  --color-info-foreground: var(--info-foreground);
+  --color-info-muted: var(--info-muted);
+
+  --color-skill-web: var(--skill-web);
+  --color-skill-crm: var(--skill-crm);
+  --color-skill-automation: var(--skill-automation);
+  --color-skill-ai: var(--skill-ai);
+  --color-skill-api: var(--skill-api);
+  --color-skill-security: var(--skill-security);
+  --color-skill-sales: var(--skill-sales);
+  --color-skill-seo: var(--skill-seo);
+  --color-skill-support: var(--skill-support);
+  --color-skill-voice: var(--skill-voice);
+  --color-skill-operations: var(--skill-operations);
+  --color-skill-leadership: var(--skill-leadership);
+
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --color-chart-6: var(--chart-6);
+
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+}
+
+@layer base {
+  * {
+    border-color: var(--border);
+  }
+
+  html {
+    color-scheme: dark;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  html.light {
+    color-scheme: light;
+  }
+
+  body {
+    background-color: var(--background);
+    color: var(--foreground);
+    font-family: var(--font-sans), ui-sans-serif, system-ui, sans-serif;
+    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+    text-rendering: optimizeLegibility;
+  }
+
+  /* Visible, consistent focus for keyboard users only. */
+  :focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+  }
+
+  ::selection {
+    background-color: var(--primary-muted);
+  }
+
+  /* Scrollbars styled to match the surface stack rather than the OS. */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--border-strong) transparent;
+  }
+  *::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  *::-webkit-scrollbar-thumb {
+    background-color: var(--border-strong);
+    border-radius: 999px;
+    border: 3px solid transparent;
+    background-clip: content-box;
+  }
+  *::-webkit-scrollbar-thumb:hover {
+    background-color: var(--muted-foreground);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+}
+
+@layer utilities {
+  /* Hairline separator that reads correctly on both themes. */
+  .border-hairline {
+    border-color: color-mix(in oklab, var(--border) 100%, transparent);
+  }
+
+  /* Screen-reader-only, restorable on focus. */
+  .sr-only-focusable:not(:focus):not(:focus-within) {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border-width: 0;
+  }
+}

@@ -1,0 +1,288 @@
+---
+title: "What Is an API?"
+summary: "The concept every integration depends on, explained without hand-waving — what an API actually is, why it exists, and what the request/response cycle looks like on the wire."
+duration: 30
+difficulty: foundation
+status: complete
+lastReviewed: "2026-08-10"
+objectives:
+  - "Explain what an API is in plain language, to a non-technical business owner"
+  - "Describe the request/response cycle and name each part of it"
+  - "Distinguish an API from a website, a database and a webhook"
+  - "Read a simple API request and predict what it will return"
+  - "Explain why a business would expose an API at all"
+prerequisites: []
+xp: 15
+skillXp:
+  api: 30
+terminology:
+  - term: "API"
+    definition: "A defined set of operations one piece of software exposes so other software can use it, without needing to know how it works inside."
+    plainEnglish: "A menu of things a system will do for you if you ask correctly."
+  - term: "Client"
+    definition: "The software making the request. In an integration you build, your code or your automation platform is the client."
+  - term: "Server"
+    definition: "The software receiving the request and deciding how to respond. Usually the vendor whose API you are calling."
+  - term: "Request"
+    definition: "A structured message asking the server to do something, containing a method, a URL, headers and often a body."
+  - term: "Response"
+    definition: "The server's structured reply, containing a status code, headers and usually a body of data."
+  - term: "Endpoint"
+    definition: "A specific URL on an API that performs one operation, such as listing contacts or creating a deal."
+  - term: "Payload"
+    definition: "The data carried in the body of a request or response, usually formatted as JSON."
+commonMistakes:
+  - mistake: "Thinking an API is a product you can point at, like a website."
+    correction: "An API is a contract, not a place. What you point at are its endpoints."
+    why: "Beginners meet APIs through documentation pages, which look like websites, so the two blur together."
+  - mistake: "Assuming the API gives you the same data you see in the vendor's own app."
+    correction: "APIs frequently expose a different, narrower or differently-shaped view of the data than the user interface does."
+    why: "The UI is built for humans and often stitches together several internal sources; the API exposes one of them."
+  - mistake: "Treating a failed call as a bug in your code before reading the response."
+    correction: "The response almost always says what went wrong. Read the status code and body first."
+    why: "The failure feels like your fault, so the instinct is to re-read your own code rather than the server's explanation."
+securityNote: "From the very first call you make, treat API credentials as you would the keys to a client's office. They belong in environment variables, never in code you commit, never in a screenshot, and never pasted into a chat window — including a chat with an AI assistant. A leaked key is not an inconvenience; it is unauthorised access to somebody's customer data."
+reviewConcepts:
+  - api-definition
+  - request-response-cycle
+  - client-server
+quiz:
+  - id: api-plain-definition
+    type: multiple-choice
+    prompt: "A café owner asks what an API is. Which explanation is both accurate and useful to them?"
+    reviewConcept: api-definition
+    options:
+      - text: "It's a defined set of things one system will do for another system if it asks in the right format — like a kitchen that will make anything on the menu, if you order it properly."
+        correct: true
+        why: "Correct. It captures the two things that matter: a fixed set of available operations, and a required format for asking. The analogy also implies the kitchen's internals are none of your business, which is the point of an API."
+      - text: "It's a website that computers visit instead of people."
+        correct: false
+        why: "Tempting, because many APIs are reached over the same HTTP that serves websites. But this conflates the transport with the concept. A website returns pages designed for humans to read; an API returns structured data designed for software to act on, and plenty of APIs do not involve the web at all."
+      - text: "It's a database that other companies are allowed to connect to."
+        correct: false
+        why: "An API usually sits in front of a database, but it is not one. It exposes a controlled set of operations, and deliberately hides the underlying storage — which may be several databases, or none."
+      - text: "It's the code a developer writes to connect two systems together."
+        correct: false
+        why: "That is the integration you write, not the API. The API is the contract the vendor publishes; your integration is one consumer of it."
+  - id: api-request-parts
+    type: multi-select
+    prompt: "Which of these are parts of an HTTP API request? Select all that apply."
+    reviewConcept: request-response-cycle
+    options:
+      - text: "The method, such as GET or POST"
+        correct: true
+        why: "Correct. The method states what kind of operation you are asking for."
+      - text: "The URL identifying the endpoint"
+        correct: true
+        why: "Correct. The URL says which resource or operation you are addressing."
+      - text: "Headers carrying metadata such as authentication and content type"
+        correct: true
+        why: "Correct. Headers are how you say who you are and what format you are sending or expect back."
+      - text: "The status code"
+        correct: false
+        why: "The status code belongs to the *response*, not the request. The server issues it to tell you how the request went. Mixing this up makes error messages much harder to reason about."
+      - text: "A body, on requests that send data"
+        correct: true
+        why: "Correct. GET requests usually have no body; POST, PUT and PATCH normally do."
+  - id: api-vs-ui-data
+    type: scenario
+    prompt: "You are integrating a client's booking system. In the vendor's web app you can clearly see each booking's 'estimated travel time'. You call the bookings endpoint and that field is absent from the JSON. What is the most reasonable first conclusion?"
+    reviewConcept: api-definition
+    options:
+      - text: "The API exposes a different view of the data than the user interface, and the field may be computed by the app or available on a different endpoint."
+        correct: true
+        why: "Correct. The UI often derives or enriches data that the API returns in raw form. The next step is to check the documentation for a related endpoint, a query parameter that expands the response, or a calculation you need to perform yourself."
+      - text: "The API is broken and the vendor should be contacted immediately."
+        correct: false
+        why: "Possible but unlikely, and an expensive first assumption. Raising a support ticket before reading the documentation costs days and makes you look careless when the field turns out to be behind an `?include=` parameter."
+      - text: "Your authentication lacks permission to see that field."
+        correct: false
+        why: "Worth considering later — some APIs do scope fields by permission — but a permissions problem more often produces an explicit error or an empty result set than a silently missing field on otherwise complete data."
+      - text: "The booking has no travel time set, so the field was omitted."
+        correct: false
+        why: "This is a real behaviour in some APIs, which omit null fields. But you observed the value present in the UI for this same booking, which makes 'no value exists' the least consistent explanation."
+  - id: api-why-expose
+    type: short-answer
+    prompt: "A client asks why their software vendor would offer an API at all — doesn't letting other systems in just create risk for the vendor? Answer in three or four sentences, as you would on a call."
+    reviewConcept: api-definition
+    rubric:
+      - "Identifies that an API makes the vendor's product more valuable by letting it fit into the customer's existing toolset"
+      - "Notes that integrations increase switching costs and therefore retention"
+      - "Acknowledges the risk framing honestly rather than dismissing it, mentioning that access is controlled through authentication and permissions"
+      - "Is written in language a non-technical business owner would follow"
+    modelAnswer: "Vendors publish APIs because a product that can't talk to anything else is much harder to sell. Most businesses already run a handful of systems, and being able to connect to them is often the deciding factor in a purchase. There's a commercial angle too — once a customer has built integrations around a product, moving away becomes expensive, so integrations improve retention. The risk is real but managed: access requires credentials the vendor issues and can revoke, and those credentials are usually scoped so an integration can only touch the data it needs."
+practicalTask:
+  title: "Make your first successful API call"
+  brief: "Pick any public API that requires no authentication — a good starting point is a public holidays API, an exchange-rate API, or a weather API with a free tier. Read its documentation, identify one endpoint, and make a successful request to it using your browser's address bar. Then make the same request again using a tool rather than the browser, and observe that you get identical data. Record the full URL you called, the status code you received, and the first few lines of the response body."
+  estimatedMinutes: 25
+  rubric:
+    - "I found the API's documentation and identified a specific endpoint before making any request"
+    - "I received a 200 status code and a response body containing real data"
+    - "I can point to the method, the URL and the response body in what I did"
+    - "I made the same call a second way and confirmed the data was the same"
+  evidence:
+    - screenshot
+    - written
+  xp: 60
+  skillXp:
+    api: 40
+software:
+  - postman
+resources:
+  - label: "MDN — An overview of HTTP"
+    url: "https://developer.mozilla.org/en-US/docs/Web/HTTP/Overview"
+    type: docs
+    note: "The most reliable plain-English reference for how requests and responses are structured."
+  - label: "HTTP Cats — status codes, memorably"
+    url: "https://http.cat/"
+    type: article
+    note: "Not a serious reference, but genuinely useful for remembering the status code families."
+---
+
+## Start with the problem, not the definition
+
+A plumbing business runs a booking system. A customer fills in a form on the
+website. Somebody needs to get that enquiry into the booking system, into the
+CRM, and in front of whoever is on the tools that afternoon.
+
+Right now a person does it. They read the email, retype the details into the
+booking system, and text the plumber. It takes four minutes, it happens eleven
+times a day, and about once a week something gets missed.
+
+You have been asked to fix it. To do that, your code needs to put a booking into
+their booking system. But you do not work for the company that built that
+booking system. You cannot open its database. You do not know what language it is
+written in, and you should not have to care.
+
+What you need is a way to say *"create a booking with these details"* to a
+system you know nothing about, and have it work.
+
+That is what an API is for.
+
+## The definition, now that it means something
+
+An **API** — Application Programming Interface — is a defined set of operations
+that a piece of software exposes so other software can use it, without needing
+to know how it works inside.
+
+Two words in that sentence are doing the work.
+
+**Defined** means the operations are fixed and documented. The booking system
+does not accept arbitrary instructions. It publishes a list: create a booking,
+list bookings, cancel a booking, update a customer. If the operation you want is
+not on that list, you cannot do it, no matter how clever you are.
+
+**Without needing to know how it works inside** is the whole point. The vendor
+can rewrite their entire backend next year. As long as the published operations
+still behave the same way, your integration keeps working. This is why APIs
+exist at all: they are a promise about behaviour that survives changes in
+implementation.
+
+## The request/response cycle
+
+Nearly every API you will meet at Ascend works over HTTP, the same protocol your
+browser uses. The interaction has exactly two halves.
+
+You — the **client** — send a **request**. The vendor's system — the **server**
+— sends back a **response**. That is the whole cycle. Nothing is persistent; the
+server does not remember you between calls unless you tell it who you are each
+time.
+
+A request has four parts:
+
+- **The method** — what kind of operation. `GET` to read something, `POST` to
+  create something. There are others, and they get a lesson of their own.
+- **The URL** — which endpoint you are addressing. `https://api.example.com/v1/bookings`
+  is a different operation from `https://api.example.com/v1/customers`.
+- **Headers** — metadata about the request. Who you are (authentication), what
+  format you are sending, what format you want back.
+- **The body** — the actual data, on requests that carry any. A `GET` usually
+  has none; a `POST` creating a booking carries the booking details.
+
+A response has three:
+
+- **A status code** — a three-digit number saying how it went. `200` means fine.
+  `404` means the thing you asked for is not there. `401` means the server does
+  not know who you are.
+- **Headers** — metadata about the response, including how much of your rate
+  limit you have left.
+- **A body** — the data, almost always JSON.
+
+Here is what that looks like concretely. A request:
+
+```http
+GET /v1/bookings?date=2026-08-14 HTTP/1.1
+Host: api.example.com
+Authorization: Bearer sk_live_9f2c...
+Accept: application/json
+```
+
+And the response:
+
+```http
+HTTP/1.1 200 OK
+Content-Type: application/json
+X-RateLimit-Remaining: 97
+
+{
+  "data": [
+    {
+      "id": "bk_8812",
+      "customer": "Marina Okafor",
+      "scheduled_for": "2026-08-14T09:30:00+10:00",
+      "status": "confirmed"
+    }
+  ],
+  "has_more": false
+}
+```
+
+You asked for the bookings on a given date. You said who you were in the
+`Authorization` header. You got back a `200`, a note that you have 97 requests
+left this window, and a JSON body containing one booking.
+
+That is the entire mechanism. Everything else in this module — methods,
+authentication schemes, status codes, pagination, rate limits, webhooks — is
+detail hung on this frame.
+
+## What an API is not
+
+Three distinctions are worth nailing down now, because conflating them causes
+real confusion later.
+
+**An API is not a website.** Both may be reached over HTTP, and an API's
+documentation is usually a website, which muddies things. But a website returns
+HTML designed for a person to look at. An API returns structured data designed
+for software to act on. If you visit an API endpoint in your browser and see a
+wall of JSON, you are seeing the difference.
+
+**An API is not a database.** It usually sits in front of one, but it exposes a
+deliberately controlled set of operations rather than raw table access. That
+control is the feature. It is also why the API sometimes will not give you
+something you can plainly see in the vendor's own interface — the interface has
+privileges and internal access that you do not.
+
+**An API is not a webhook.** With an API, *you* ask and the server answers. With
+a webhook, the server contacts *you* when something happens. They are opposite
+directions of travel, and choosing between them is a design decision you will
+make on nearly every Ascend build. That gets its own lesson.
+
+## Why a vendor bothers
+
+It is a fair question, and clients do ask it. Opening a system to outside
+software sounds like pure downside for the vendor.
+
+It is not, for three reasons. A product that integrates with the tools a business
+already uses is far easier to sell than one that stands alone. A customer who has
+built integrations around a product finds it expensive to leave, which improves
+retention. And an API lets the vendor serve a long tail of customer-specific
+needs without building any of it — you build the plumbing business's particular
+workflow, not them.
+
+The risk is managed rather than accepted. Access requires credentials the vendor
+issues and can revoke instantly, and those credentials are normally scoped so a
+given integration can only reach the data it genuinely needs.
+
+That last point is not just the vendor's concern. When you hold a client's API
+credentials, you are holding access to their customers' data. Treat it
+accordingly, starting today.

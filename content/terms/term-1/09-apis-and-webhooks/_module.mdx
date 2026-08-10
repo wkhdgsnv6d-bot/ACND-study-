@@ -1,0 +1,60 @@
+---
+title: "APIs & Webhooks"
+summary: "The module everything else depends on. Once you can read an API's documentation, authenticate against it, send the right request and handle the response — including the failures — every automation and integration in the rest of the program becomes a variation on the same theme."
+status: draft
+objectives:
+  - "Explain what an API is, and what a REST API specifically is, without using the word 'interface'"
+  - "Read unfamiliar API documentation and work out how to make your first successful call"
+  - "Choose the correct HTTP method for an operation and explain why the others are wrong"
+  - "Authenticate with API keys, bearer tokens and OAuth, and know which one you are dealing with"
+  - "Interpret status codes and error bodies well enough to debug without guessing"
+  - "Handle rate limits and pagination without losing data"
+  - "Explain the difference between polling an API and receiving a webhook, and choose correctly"
+  - "Build and test a webhook receiver, including signature verification"
+prerequisites: []
+skills:
+  - api
+  - automation
+  - security
+software:
+  - postman
+  - n8n
+exam:
+  title: "APIs & Webhooks — Module Exam"
+  passMark: 80
+  questionCount: 20
+  timeLimitMinutes: 45
+---
+
+Almost everything Ascend sells is, underneath, one system talking to another.
+A form on a website tells a CRM about a new lead. The CRM tells an automation
+platform that a deal moved stage. The automation platform asks a language model
+to summarise something, then writes the result back. Every one of those arrows
+is an API call or a webhook.
+
+This is the module where the rest of the program stops being a collection of
+separate tools and starts being one skill applied repeatedly.
+
+## Why this module comes before automation
+
+It would be possible to teach n8n first. You would drag a few nodes together,
+watch data move, and feel productive within an hour.
+
+You would also be helpless the first time something broke. Automation platforms
+are, to a large extent, friendly wrappers around HTTP requests. When a workflow
+fails, the error you get is an HTTP error. When the docs say "rate limited to
+100 requests per minute", the mitigation is an HTTP concern. When a client asks
+whether their data is safe in transit, the answer is about HTTPS and token
+handling.
+
+Learn the layer underneath first, and the tools above it become obvious. Learn
+the tools first, and you spend years pattern-matching without understanding.
+
+## Concepts before vendors
+
+This module follows the rule used throughout the program: **the concept comes
+first, the vendor's implementation second**. Webhooks are explained as a
+mechanism before you see how n8n exposes them. Authentication is explained as a
+problem before you see how any particular product solves it.
+
+Interfaces get redesigned constantly. HTTP does not.

@@ -42,5 +42,12 @@ jobs:
       - name: Test
         run: npm run test
 
+      # Proves row-level security actually isolates accounts by applying the
+      # migration to a throwaway database and attempting real cross-account
+      # reads and writes. The unit tests check the policies were written; this
+      # checks they work. GitHub's ubuntu runners ship PostgreSQL 16.
+      - name: Verify row-level security
+        run: npm run db:verify-rls
+
       - name: Production build
         run: npm run build

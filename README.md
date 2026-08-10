@@ -21,18 +21,23 @@ system can be earned by lesson completion alone.
 
 ## Status
 
-**Phase 1 complete** — design system, content pipeline and scoring engines.
-Phase 2 (database, authentication, application shell, dashboard) is next.
-See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for the full plan and the
-reasoning behind each decision.
+**Phases 1–2 complete** — design system, content pipeline, scoring engines,
+database with row-level security, authentication, application shell, dashboard
+and settings. Phase 3 (the lesson experience, progress, quizzes and
+assignments) is next. See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for the
+full plan and the reasoning behind each decision.
+
+The sidebar marks every surface that is not built yet with the phase that
+builds it, so the app always tells the truth about what exists.
 
 | | |
 |---|---|
 | Framework | Next.js 16 (App Router), React 19, TypeScript strict |
 | Styling | Tailwind CSS v4, dark-first design tokens |
 | Content | MDX with Zod-validated frontmatter |
-| Data | Supabase Postgres with row-level security *(Phase 2)* |
-| Tests | 134 passing across 8 suites |
+| Data | Supabase Postgres, RLS on all 27 tables |
+| Auth | Supabase Auth, guarded in `src/proxy.ts` and re-checked server-side |
+| Tests | 191 passing across 9 suites |
 
 ---
 
@@ -43,9 +48,17 @@ npm install
 npm run dev
 ```
 
-Phase 1 needs no credentials. `dev`, `build` and `test` all work without a
-`.env.local`. From Phase 2, copy `.env.example` to `.env.local` and add your
-Supabase project details.
+The app boots without credentials — `dev`, `build` and `test` all work with no
+`.env.local`, and every route shows an explanatory setup screen instead of
+failing.
+
+To make it persist anything, copy `.env.example` to `.env.local`, add your
+Supabase project details, then create the tables:
+
+```bash
+npm run db:migrate      # creates 27 tables and their RLS policies
+npm run db:verify-rls   # optional: proves accounts cannot see each other
+```
 
 ## Commands
 
@@ -55,7 +68,12 @@ npm run build           # production build (validates content first)
 npm run verify          # content + typecheck + lint + test
 npm run content:check   # validate the curriculum, print a coverage report
 npm run content:strict  # as above, warnings fail
-npm test                # engine and schema tests
+npm test                # engine, schema and RLS-policy tests
+
+npm run db:generate     # regenerate SQL migrations from the Drizzle schema
+npm run db:migrate      # apply migrations (needs DATABASE_URL)
+npm run db:verify-rls   # prove RLS isolates accounts, on a throwaway database
+npm run db:studio       # browse the database
 ```
 
 ## Layout
@@ -68,8 +86,12 @@ src/app/            routes (App Router)
 src/components/     UI, grouped by domain
 src/lib/content/    content loader, schema, validation
 src/lib/domain/     skills and certification definitions
+src/lib/db/         Drizzle schema, migrations, RLS policies
 src/lib/engines/    pure scoring logic — XP, skills, certification,
                     unlocking, streaks, spaced repetition, agency finance
+src/lib/queries/    data access, feeding raw rows into the engines
+src/lib/supabase/   server and browser clients
+src/proxy.ts        session refresh and route protection
 ```
 
 ## Writing a lesson

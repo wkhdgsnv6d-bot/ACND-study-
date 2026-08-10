@@ -1,0 +1,230 @@
+import type { SupabaseClient, User } from "@supabase/supabase-js";
+
+import { DEFAULT_TERM_4_CONFIG, type Term4UnlockConfig } from "@/lib/engines/unlock";
+import type { PackageTier, ServicePackage } from "@/lib/engines/finance";
+import { createClient } from "@/lib/supabase/server";
+
+/**
+ * Settings, including Ascend's real service packages.
+ *
+ * The package rows here are what make the specification's rule work: a lesson
+ * asking you to compute the Growth package's gross margin reads these exact
+ * numbers, not a textbook company's. Until you enter yours, the seeded rows are
+ * flagged `isPlaceholder` and the UI says so plainly rather than presenting
+ * invented figures as though they were real.
+ */
+
+export interface PackageRow extends ServicePackage {
+  id: string;
+  description: string | null;
+  isPlaceholder: boolean;
+}
+
+export interface UserSettings {
+  displayName: string | null;
+  timeZone: string;
+  currency: string;
+  dailyStudyTargetMinutes: number;
+  deliverableHoursPerWeek: number;
+  term4Unlock: Term4UnlockConfig;
+  packages: PackageRow[];
+  error: string | null;
+}
+
+/**
+ * Placeholder economics. Deliberately round numbers that look like defaults
+ * rather than like researched figures, so they are never mistaken for yours.
+ */
+const PLACEHOLDER_PACKAGES: Array<
+  Omit<PackageRow, "id" | "tier"> & { tier: PackageTier }
+> = [
+  {
+    tier: "essential",
+    name: "Essential",
+    description: "Website and basic lead capture.",
+    setupPriceCents: 0,
+    monthlyPriceCents: 0,
+    setupSoftwareCostCents: 0,
+    monthlySoftwareCostCents: 0,
+    setupHours: 0,
+    monthlyHours: 0,
+    labourRateCentsPerHour: 6000,
+    isPlaceholder: true,
+  },
+  {
+    tier: "growth",
+    name: "Growth",
+    description: "Website, CRM and core automations.",
+    setupPriceCents: 0,
+    monthlyPriceCents: 0,
+    setupSoftwareCostCents: 0,
+    monthlySoftwareCostCents: 0,
+    setupHours: 0,
+    monthlyHours: 0,
+    labourRateCentsPerHour: 6000,
+    isPlaceholder: true,
+  },
+  {
+    tier: "partner",
+    name: "Partner",
+    description: "Full stack plus ongoing optimisation and reporting.",
+    setupPriceCents: 0,
+    monthlyPriceCents: 0,
+    setupSoftwareCostCents: 0,
+    monthlySoftwareCostCents: 0,
+    setupHours: 0,
+    monthlyHours: 0,
+    labourRateCentsPerHour: 6000,
+    isPlaceholder: true,
+  },
+];
+
+export async function getSettings(user: User): Promise<UserSettings> {
+  const supabase = await createClient();
+  if (!supabase) return emptySettings("Database not configured.");
+
+  try {
+    await ensureBootstrapped(supabase, user);
+
+    const [profileResult, settingsResult, packagesResult] = await Promise.all([
+      supabase
+        .from("profiles")
+        .select("display_name, time_zone, currency, daily_study_target_minutes")
+        .eq("id", user.id)
+        .maybeSingle(),
+      supabase
+        .from("settings")
+        .select("term4_unlock, deliverable_hours_per_week")
+        .eq("user_id", user.id)
+        .maybeSingle(),
+      supabase
+        .from("pricing_packages")
+        .select("*")
+        .eq("user_id", user.id)
+        .order("tier"),
+    ]);
+
+    const failure = [profileResult, settingsResult, packagesResult].find((r) => r.error)
+      ?.error;
+    if (failure) throw new Error(failure.message);
+
+    const profile = profileResult.data as {
+      display_name: string | null;
+      time_zone: string;
+      currency: string;
+      daily_study_target_minutes: number;
+    } | null;
+
+    const settings = settingsResult.data as {
+      term4_unlock: unknown;
+      deliverable_hours_per_week: number;
+    } | null;
+
+    return {
+      displayName: profile?.display_name ?? null,
+      timeZone: profile?.time_zone ?? "Australia/Sydney",
+      currency: profile?.currency ?? "AUD",
+      dailyStudyTargetMinutes: profile?.daily_study_target_minutes ?? 90,
+      deliverableHoursPerWeek: settings?.deliverable_hours_per_week ?? 30,
+      term4Unlock: mergeTerm4(settings?.term4_unlock),
+      packages: (packagesResult.data ?? []).map(toPackageRow),
+      error: null,
+    };
+  } catch (error) {
+    return emptySettings(
+      error instanceof Error ? error.message : "Could not load settings.",
+    );
+  }
+}
+
+/**
+ * Creates the rows a new account needs. Idempotent — `onConflict` makes a
+ * second call a no-op, so this can safely run on every settings load rather
+ * than depending on a signup hook that might not fire.
+ */
+async function ensureBootstrapped(
+  supabase: SupabaseClient,
+  user: User,
+): Promise<void> {
+  await supabase
+    .from("profiles")
+    .upsert({ id: user.id }, { onConflict: "id", ignoreDuplicates: true });
+
+  await supabase.from("settings").upsert(
+    { user_id: user.id, term4_unlock: DEFAULT_TERM_4_CONFIG },
+    { onConflict: "user_id", ignoreDuplicates: true },
+  );
+
+  await supabase.from("pricing_packages").upsert(
+    PLACEHOLDER_PACKAGES.map((p) => ({
+      user_id: user.id,
+      tier: p.tier,
+      name: p.name,
+      description: p.description,
+      setup_price_cents: p.setupPriceCents,
+      monthly_price_cents: p.monthlyPriceCents,
+      setup_software_cost_cents: p.setupSoftwareCostCents,
+      monthly_software_cost_cents: p.monthlySoftwareCostCents,
+      setup_hours: p.setupHours,
+      monthly_hours: p.monthlyHours,
+      labour_rate_cents_per_hour: p.labourRateCentsPerHour,
+      is_placeholder: true,
+    })),
+    { onConflict: "user_id,tier", ignoreDuplicates: true },
+  );
+}
+
+function toPackageRow(row: unknown): PackageRow {
+  const r = row as Record<string, never> & {
+    id: string;
+    tier: PackageTier;
+    name: string;
+    description: string | null;
+    setup_price_cents: number;
+    monthly_price_cents: number;
+    setup_software_cost_cents: number;
+    monthly_software_cost_cents: number;
+    setup_hours: number;
+    monthly_hours: number;
+    labour_rate_cents_per_hour: number;
+    is_placeholder: boolean;
+  };
+
+  return {
+    id: r.id,
+    tier: r.tier,
+    name: r.name,
+    description: r.description,
+    setupPriceCents: r.setup_price_cents,
+    monthlyPriceCents: r.monthly_price_cents,
+    setupSoftwareCostCents: r.setup_software_cost_cents,
+    monthlySoftwareCostCents: r.monthly_software_cost_cents,
+    setupHours: r.setup_hours,
+    monthlyHours: r.monthly_hours,
+    labourRateCentsPerHour: r.labour_rate_cents_per_hour,
+    isPlaceholder: r.is_placeholder,
+  };
+}
+
+function mergeTerm4(stored: unknown): Term4UnlockConfig {
+  if (!stored || typeof stored !== "object") return DEFAULT_TERM_4_CONFIG;
+  const partial = stored as Partial<Term4UnlockConfig>;
+  return {
+    ...DEFAULT_TERM_4_CONFIG,
+    ...partial,
+    thresholds: { ...DEFAULT_TERM_4_CONFIG.thresholds, ...partial.thresholds },
+  };
+}
+
+function emptySettings(error: string): UserSettings {
+  return {
+    displayName: null,
+    timeZone: "Australia/Sydney",
+    currency: "AUD",
+    dailyStudyTargetMinutes: 90,
+    deliverableHoursPerWeek: 30,
+    term4Unlock: DEFAULT_TERM_4_CONFIG,
+    packages: [],
+    error,
+  };
+}

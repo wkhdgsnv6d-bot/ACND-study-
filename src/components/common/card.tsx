@@ -1,15 +1,13 @@
-import type { ReactNode } from "react";
+import type { ComponentProps, ReactNode } from "react";
 
 import { cn } from "@/lib/utils";
 
-interface CardProps {
-  children: ReactNode;
-  className?: string;
+interface CardProps extends ComponentProps<"div"> {
   /** Raised cards sit on `surface-2` — use sparingly, for the primary action. */
   elevated?: boolean;
 }
 
-export function Card({ children, className, elevated = false }: CardProps) {
+export function Card({ children, className, elevated = false, ...props }: CardProps) {
   return (
     <div
       className={cn(
@@ -19,6 +17,7 @@ export function Card({ children, className, elevated = false }: CardProps) {
         elevated ? "bg-surface-2" : "bg-card",
         className,
       )}
+      {...props}
     >
       {children}
     </div>

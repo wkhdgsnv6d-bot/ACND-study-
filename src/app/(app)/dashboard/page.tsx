@@ -143,13 +143,14 @@ export default async function DashboardPage() {
                           )?.frontmatter.title}
                         </span>
                       </div>
-                      <Button className="mt-5" disabled>
-                        Open lesson
-                        <ArrowRight />
+                      <Button asChild className="mt-5">
+                        <Link
+                          href={`/course/${nextLesson.termSlug}/${nextLesson.moduleSlug}/${nextLesson.slug}`}
+                        >
+                          Open lesson
+                          <ArrowRight />
+                        </Link>
                       </Button>
-                      <p className="mt-2 text-xs text-subtle-foreground">
-                        The lesson reader arrives in Phase 3.
-                      </p>
                     </>
                   ) : (
                     <>

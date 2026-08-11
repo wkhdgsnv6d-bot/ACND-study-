@@ -300,3 +300,55 @@
     border-width: 0;
   }
 }
+
+/*
+ * Lesson code blocks.
+ *
+ * rehype-pretty-code emits both a dark and a light Shiki theme as data
+ * attributes on every token. Selecting between them in CSS means code follows
+ * the app theme instantly on toggle, with no re-render and no flash.
+ */
+@layer components {
+  .lesson-prose {
+    /* Comfortable long-form measure. Wider than this and the eye loses the line. */
+    max-width: 68ch;
+  }
+
+  .lesson-prose code[data-theme],
+  .lesson-prose code[data-theme] span {
+    color: var(--shiki-dark);
+    background-color: var(--shiki-dark-bg);
+  }
+
+  .light .lesson-prose code[data-theme],
+  .light .lesson-prose code[data-theme] span {
+    color: var(--shiki-light);
+    background-color: var(--shiki-light-bg);
+  }
+
+  /* Line numbers and highlighted lines, when content asks for them. */
+  .lesson-prose code[data-line-numbers] {
+    counter-reset: line;
+  }
+  .lesson-prose code[data-line-numbers] > [data-line]::before {
+    counter-increment: line;
+    content: counter(line);
+    display: inline-block;
+    width: 1.25rem;
+    margin-right: 1.25rem;
+    text-align: right;
+    color: var(--subtle-foreground);
+  }
+  .lesson-prose [data-highlighted-line] {
+    background-color: var(--primary-muted);
+    border-left: 2px solid var(--primary);
+    margin-left: -1rem;
+    padding-left: calc(1rem - 2px);
+  }
+
+  /* Autolinked headings: the anchor wraps the text, so strip its styling. */
+  .lesson-prose :is(h1, h2, h3, h4) a {
+    color: inherit;
+    text-decoration: none;
+  }
+}

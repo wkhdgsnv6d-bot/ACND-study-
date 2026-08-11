@@ -383,8 +383,8 @@ Three modelling decisions are encoded rather than assumed:
 |---|---|---|
 | 1 | Scaffold, design tokens, content pipeline, engines, CI | **Done** |
 | 2 | Drizzle schema, RLS, auth, app shell, dashboard, settings | **Done** |
-| 3 | Lesson experience, progress, notes, assignments, quizzes, exams | Next |
-| 4 | Skill tree, certifications, XP, achievements | |
+| 3 | Lesson experience, progress, notes, quizzes, practical submissions | **Done** |
+| 4 | Skill tree, certifications, achievements, labs, module exams | Next |
 | 5 | Business Lab, Client Pipeline, Market Validation, Revenue/MRR | |
 | 6 | Software Library, Template Vault, Projects, Resources | |
 | 7 | Search, command palette, streaks, Today, Weekly Review, analytics, export | |
@@ -431,7 +431,43 @@ npm run db:verify-rls    # prove RLS isolates accounts, on a throwaway database
 npm run db:studio        # browse the database
 ```
 
-## 10. Navigation and honest scope
+## 10. The lesson experience
+
+Three rules are enforced on the server, because a disabled button is a
+suggestion and a hidden answer is not a guarantee.
+
+**Completion is earned, not clicked.** `engines/completion.ts` requires 85%
+scroll depth plus a dwell time of 40% of the lesson's estimated duration, capped
+at ten minutes. Only time the tab is *visible* counts, flushed in bounded
+increments, so leaving a lesson open overnight produces almost nothing.
+`completeLesson` re-checks the stored values, and the prerequisites, before
+accepting.
+
+**Quizzes are graded server-side.** Questions are stripped of `correct` and
+`why` by `lib/quiz.ts` before reaching the browser, so answers are not sitting
+in the page source. Explanations come back with the result, which is when they
+teach most: every option is explained, not just the right one.
+
+Open questions (short answer, client simulation) cannot be machine-graded. They
+are shown with their rubric and a model answer for self-assessment and are
+**excluded from the score** rather than counted as free marks.
+
+**Wrong answers become a study plan.** Every incorrect response schedules a
+spaced-repetition card against its `reviewConcept`, so a failed quiz turns into
+scheduled review rather than a number. Existing cards keep their schedule, so
+re-reading a lesson does not reset a concept already in rotation.
+
+**Practical tasks require evidence.** Rubric criteria are ticked individually
+rather than by one "done" checkbox, and the declared evidence kinds are
+genuinely required: the server rejects a submission with an unticked criterion
+or a missing link. This is self-attested and the platform says so; what it will
+not do is let a step be skipped without noticing.
+
+XP is awarded through an idempotent upsert keyed on
+(user_id, source_type, source_id), so replays and double-clicks cannot inflate
+the ledger.
+
+## 11. Navigation and honest scope
 
 `src/lib/navigation.ts` marks each sidebar item with the phase that builds it.
 Items above `CURRENT_PHASE` render disabled with the phase shown, rather than

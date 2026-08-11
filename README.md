@@ -21,10 +21,12 @@ system can be earned by lesson completion alone.
 
 ## Status
 
-**Phases 1–2 complete** — design system, content pipeline, scoring engines,
-database with row-level security, authentication, application shell, dashboard
-and settings. Phase 3 (the lesson experience, progress, quizzes and
-assignments) is next. See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for the
+**Phases 1–3 complete** — design system, content pipeline, scoring engines,
+database with row-level security, authentication, application shell, dashboard,
+settings, and the lesson experience: MDX rendering, reading progress, knowledge
+checks graded server-side, spaced repetition seeded from wrong answers, notes
+and evidence-bearing practical submissions. Phase 4 (skill tree, certifications,
+labs and module exams) is next. See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for the
 full plan and the reasoning behind each decision.
 
 The sidebar marks every surface that is not built yet with the phase that
@@ -38,7 +40,7 @@ builds it, so the app always tells the truth about what exists.
 | Data | Supabase Postgres, RLS on all 27 tables |
 | Pricing | Ascend's real Essential / Growth / Partner figures, editable in Settings |
 | Auth | Supabase Auth, guarded in `src/proxy.ts` and re-checked server-side |
-| Tests | 191 passing across 9 suites |
+| Tests | 223 passing across 10 suites |
 
 ---
 

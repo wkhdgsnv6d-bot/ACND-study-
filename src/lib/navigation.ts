@@ -45,7 +45,7 @@ export interface NavGroup {
 }
 
 /** Bumped as each phase lands. Everything at or below this is navigable. */
-export const CURRENT_PHASE: BuildPhase = 2;
+export const CURRENT_PHASE: BuildPhase = 3;
 
 export const NAV_GROUPS: NavGroup[] = [
   {
@@ -89,7 +89,7 @@ export const NAV_GROUPS: NavGroup[] = [
         label: "Labs",
         href: "/labs",
         icon: FlaskConical,
-        phase: 3,
+        phase: 4,
         note: "Interactive practical labs",
       },
     ],

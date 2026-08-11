@@ -11,7 +11,7 @@ import { StatusPill } from "@/components/common/status-pill";
 import { SKILLS } from "@/lib/domain/skills";
 import { evaluateTermLock } from "@/lib/engines/unlock";
 import { getCourseOverview } from "@/lib/queries/course";
-import { getDashboardData } from "@/lib/queries/dashboard";
+import { getProgressSnapshot } from "@/lib/queries/progress";
 import { getCurrentUser } from "@/lib/supabase/server";
 
 export const metadata: Metadata = { title: "My Course" };
@@ -22,7 +22,7 @@ export default async function CoursePage() {
 
   const [overview, dashboard] = await Promise.all([
     getCourseOverview(user),
-    getDashboardData(user),
+    getProgressSnapshot(user),
   ]);
 
   return (

@@ -45,7 +45,7 @@ export interface NavGroup {
 }
 
 /** Bumped as each phase lands. Everything at or below this is navigable. */
-export const CURRENT_PHASE: BuildPhase = 3;
+export const CURRENT_PHASE: BuildPhase = 4;
 
 export const NAV_GROUPS: NavGroup[] = [
   {

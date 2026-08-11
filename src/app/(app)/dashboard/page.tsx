@@ -20,7 +20,7 @@ import { loadCurriculum } from "@/lib/content/loader";
 import { SKILLS, SKILL_KEYS } from "@/lib/domain/skills";
 import { formatCurrency } from "@/lib/engines/finance";
 import { SKILL_LEVEL_NAMES } from "@/lib/domain/skills";
-import { getDashboardData } from "@/lib/queries/dashboard";
+import { getProgressSnapshot } from "@/lib/queries/progress";
 import { getCurrentUser } from "@/lib/supabase/server";
 
 export const metadata: Metadata = { title: "Dashboard" };
@@ -29,7 +29,7 @@ export default async function DashboardPage() {
   const user = await getCurrentUser();
   if (!user) redirect("/login");
 
-  const data = await getDashboardData(user);
+  const data = await getProgressSnapshot(user);
   const { curriculum } = loadCurriculum();
 
   const nextLesson = [...curriculum.lessonsByPath.values()].find(
@@ -88,7 +88,7 @@ export default async function DashboardPage() {
         />
         <StatCard
           label="Lessons"
-          value={`${data.lessonsCompleted}/${data.lessonsAvailable}`}
+          value={`${data.completedLessons.size}/${data.lessonsAvailable}`}
           hint="Published lessons"
         />
         <StatCard
@@ -312,11 +312,10 @@ export default async function DashboardPage() {
             />
             <CardBody>
               <dl className="space-y-2.5 text-sm">
-                <Row label="Prospects contacted" value={data.prospectsContacted} />
-                <Row label="Clients" value={data.clientsWon} />
-                <Row label="Projects built" value={data.projectCount} />
-                <Row label="Labs solved" value={data.labsSolved} />
-                <Row label="Work approved" value={data.submissionsApproved} />
+                <Row label="Active clients" value={data.metrics.activeClients} />
+                <Row label="Projects built" value={data.projects.length} />
+                <Row label="Labs solved" value={data.solvedLabs.size} />
+                <Row label="Work approved" value={data.approvedSubmissions.size} />
               </dl>
             </CardBody>
           </Card>

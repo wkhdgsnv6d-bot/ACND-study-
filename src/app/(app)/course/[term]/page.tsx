@@ -13,7 +13,7 @@ import { getTermSource, loadCurriculum } from "@/lib/content/loader";
 import { SKILLS } from "@/lib/domain/skills";
 import { evaluateTermLock } from "@/lib/engines/unlock";
 import { buildTermProgress, getCourseOverview } from "@/lib/queries/course";
-import { getDashboardData } from "@/lib/queries/dashboard";
+import { getProgressSnapshot } from "@/lib/queries/progress";
 import { getCurrentUser } from "@/lib/supabase/server";
 
 export async function generateStaticParams() {
@@ -41,7 +41,7 @@ export default async function TermPage(props: PageProps<"/course/[term]">) {
 
   const [overview, dashboard] = await Promise.all([
     getCourseOverview(user),
-    getDashboardData(user),
+    getProgressSnapshot(user),
   ]);
 
   const lock = evaluateTermLock(term.number, dashboard.term4);

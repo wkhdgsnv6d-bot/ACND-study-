@@ -8,6 +8,7 @@ import {
   FolderGit2,
   Gauge,
   LayoutDashboard,
+  Library,
   LineChart,
   type LucideIcon,
   MessageSquareQuote,
@@ -45,7 +46,7 @@ export interface NavGroup {
 }
 
 /** Bumped as each phase lands. Everything at or below this is navigable. */
-export const CURRENT_PHASE: BuildPhase = 5;
+export const CURRENT_PHASE: BuildPhase = 6;
 
 export const NAV_GROUPS: NavGroup[] = [
   {
@@ -167,6 +168,7 @@ export const NAV_GROUPS: NavGroup[] = [
         phase: 6,
       },
       { label: "Notes", href: "/notes", icon: NotebookPen, phase: 6 },
+      { label: "Resources", href: "/resources", icon: Library, phase: 6 },
     ],
   },
   {

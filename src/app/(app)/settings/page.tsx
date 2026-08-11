@@ -54,7 +54,7 @@ export default async function SettingsPage() {
         <Card id="pricing">
           <CardHeader
             title="Ascend pricing"
-            description="These numbers drive every margin exercise in the course and every calculator in the Business Lab. Until you enter yours, the seeded rows are marked as placeholders."
+            description="These rows drive every margin exercise, calculator and financial simulation in the platform — nothing hard-codes a price. Prices are yours; the delivery hours and cost figures alongside them are editable planning assumptions, not customer-facing promises."
           />
           <CardBody className="space-y-8">
             {settings.packages.length === 0 ? (
@@ -63,7 +63,9 @@ export default async function SettingsPage() {
                 connected.
               </p>
             ) : (
-              settings.packages.map((pkg) => <PackageForm key={pkg.id} pkg={pkg} />)
+              settings.packages.map((pkg) => (
+                <PackageForm key={pkg.id} pkg={pkg} currency={settings.currency} />
+              ))
             )}
           </CardBody>
         </Card>

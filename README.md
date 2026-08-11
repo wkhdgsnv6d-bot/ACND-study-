@@ -36,6 +36,7 @@ builds it, so the app always tells the truth about what exists.
 | Styling | Tailwind CSS v4, dark-first design tokens |
 | Content | MDX with Zod-validated frontmatter |
 | Data | Supabase Postgres, RLS on all 27 tables |
+| Pricing | Ascend's real Essential / Growth / Partner figures, editable in Settings |
 | Auth | Supabase Auth, guarded in `src/proxy.ts` and re-checked server-side |
 | Tests | 191 passing across 9 suites |
 
@@ -93,6 +94,25 @@ src/lib/queries/    data access, feeding raw rows into the engines
 src/lib/supabase/   server and browser clients
 src/proxy.ts        session refresh and route protection
 ```
+
+## Ascend's pricing
+
+Essential, Growth and Partner live in Settings, seeded with the real figures.
+Every margin exercise, calculator and financial simulation reads those rows —
+nothing hard-codes a price, so changing one there changes every downstream
+number.
+
+Each package separates **commitments** from **assumptions**:
+
+- Setup and monthly price are customer-facing. Growth and Partner are "from"
+  pricing and are rendered as a floor everywhere, never as a flat rate.
+- Delivery hours, software cost and labour rate are internal planning
+  assumptions. They stay flagged as unreviewed estimates until you tick that
+  they have been checked against real delivery data.
+- Third-party and usage-based costs — AI and API usage, voice minutes, phone
+  numbers, SMS, CRM licences, domains, premium plugins and subscriptions — are
+  billed separately by default, or covered by a defined allowance. They are
+  never silently absorbed into the monthly fee.
 
 ## Writing a lesson
 

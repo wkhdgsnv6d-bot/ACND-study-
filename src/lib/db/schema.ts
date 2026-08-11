@@ -206,6 +206,13 @@ export const packageTierEnum = pgEnum("package_tier", [
   "partner",
 ]);
 
+/** How third-party and usage-based costs are treated. See `pricingPackages`. */
+export const usageBillingEnum = pgEnum("usage_billing", [
+  "separate",
+  "allowance",
+  "included",
+]);
+
 export const urgencyEnum = pgEnum("urgency", ["low", "medium", "high", "critical"]);
 
 export const sopStatusEnum = pgEnum("sop_status", ["draft", "active", "retired"]);
@@ -263,10 +270,16 @@ export const settings = pgTable(
  * This table is why the specification's rule about exercises works: a lesson
  * asking you to compute the Growth package's gross margin reads these rows, the
  * same ones the Business Lab calculators read. The exercise is about your
- * business, not a textbook company.
+ * business, not a textbook company. Nothing anywhere hard-codes a price.
  *
- * `isPlaceholder` marks seeded defaults so the UI can say so plainly rather
- * than presenting invented numbers as though they were yours.
+ * The columns split into two kinds, and the distinction is load-bearing:
+ *
+ * - **Customer-facing** — `setup_price_cents`, `monthly_price_cents` and
+ *   `is_from_pricing`. These are commitments.
+ * - **Internal planning assumptions** — hours, software cost and labour rate.
+ *   These are estimates for modelling, not promises, and
+ *   `assumptions_reviewed` records whether they have been checked against real
+ *   delivery data yet.
  */
 export const pricingPackages = pgTable(
   "pricing_packages",
@@ -276,8 +289,18 @@ export const pricingPackages = pgTable(
     tier: packageTierEnum("tier").notNull(),
     name: text("name").notNull(),
     description: text("description"),
+
+    /* Customer-facing pricing. */
     setupPriceCents: integer("setup_price_cents").notNull().default(0),
     monthlyPriceCents: integer("monthly_price_cents").notNull().default(0),
+    /**
+     * Growth and Partner are quoted as a floor, not a fixed rate. The platform
+     * must present them as "from $X" everywhere — proposals, exercises and the
+     * Business Lab alike.
+     */
+    isFromPricing: boolean("is_from_pricing").notNull().default(false),
+
+    /* Internal planning assumptions. */
     setupSoftwareCostCents: integer("setup_software_cost_cents").notNull().default(0),
     monthlySoftwareCostCents: integer("monthly_software_cost_cents")
       .notNull()
@@ -287,7 +310,24 @@ export const pricingPackages = pgTable(
     labourRateCentsPerHour: integer("labour_rate_cents_per_hour")
       .notNull()
       .default(6000),
-    isPlaceholder: boolean("is_placeholder").notNull().default(true),
+
+    /**
+     * Third-party and usage-based costs: AI and API usage, voice minutes, phone
+     * numbers, SMS, CRM licences, domains, premium plugins and subscriptions.
+     * Default `separate` — billed on rather than absorbed, because these scale
+     * with the client's activity and Ascend does not control them.
+     */
+    usageBilling: usageBillingEnum("usage_billing").notNull().default("separate"),
+    estimatedMonthlyUsageCostCents: integer("estimated_monthly_usage_cost_cents")
+      .notNull()
+      .default(0),
+    usageAllowanceCents: integer("usage_allowance_cents").notNull().default(0),
+
+    /** False until the planning assumptions have been checked against reality. */
+    assumptionsReviewed: boolean("assumptions_reviewed").notNull().default(false),
+    /** True only while the row still holds unedited seed prices. */
+    isPlaceholder: boolean("is_placeholder").notNull().default(false),
+
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },

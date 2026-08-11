@@ -114,19 +114,35 @@ const hours = z.coerce.number().min(0).max(2000);
 const packageSchema = z.object({
   id: z.string().uuid(),
   name: z.string().trim().min(1, "Give the package a name").max(60),
+
+  /* Customer-facing. */
   setupPrice: money,
   monthlyPrice: money,
+  isFromPricing: z.coerce.boolean(),
+
+  /* Internal planning assumptions. */
   setupSoftwareCost: money,
   monthlySoftwareCost: money,
   setupHours: hours,
   monthlyHours: hours,
   labourRate: money,
+
+  /* Third-party and usage-based costs. */
+  usageBilling: z.enum(["separate", "allowance", "included"]),
+  estimatedMonthlyUsageCost: money,
+  usageAllowance: money,
+
+  assumptionsReviewed: z.coerce.boolean(),
 });
 
 /**
- * Saves one package. Entering any non-zero figure clears `isPlaceholder`, which
- * is what stops the platform describing your numbers as defaults once they are
- * genuinely yours.
+ * Saves one package.
+ *
+ * Two flags carry meaning beyond their values. `is_placeholder` is cleared once
+ * any real price is entered, so the platform stops describing the figures as
+ * defaults. `assumptions_reviewed` is set only when you explicitly tick it,
+ * because hours and labour rate are estimates until delivery data says
+ * otherwise — and every economics readout carries that caveat until then.
  */
 export async function updatePackage(
   _previous: ActionState,
@@ -137,11 +153,16 @@ export async function updatePackage(
     name: formData.get("name"),
     setupPrice: formData.get("setupPrice"),
     monthlyPrice: formData.get("monthlyPrice"),
+    isFromPricing: formData.get("isFromPricing") === "on",
     setupSoftwareCost: formData.get("setupSoftwareCost"),
     monthlySoftwareCost: formData.get("monthlySoftwareCost"),
     setupHours: formData.get("setupHours"),
     monthlyHours: formData.get("monthlyHours"),
     labourRate: formData.get("labourRate"),
+    usageBilling: formData.get("usageBilling"),
+    estimatedMonthlyUsageCost: formData.get("estimatedMonthlyUsageCost"),
+    usageAllowance: formData.get("usageAllowance"),
+    assumptionsReviewed: formData.get("assumptionsReviewed") === "on",
   });
 
   if (!parsed.success) {
@@ -152,11 +173,23 @@ export async function updatePackage(
     };
   }
 
+  const d = parsed.data;
+
+  if (d.usageBilling === "allowance" && d.usageAllowance <= 0) {
+    return {
+      status: "error",
+      message: null,
+      fieldErrors: {
+        usageAllowance:
+          "An allowance of zero is not an allowance — either set a figure or bill usage separately",
+      },
+    };
+  }
+
   const user = await requireUser();
   const supabase = await createClient();
   if (!supabase) return { status: "error", message: "Database not configured." };
 
-  const d = parsed.data;
   const entered =
     d.setupPrice > 0 || d.monthlyPrice > 0 || d.setupHours > 0 || d.monthlyHours > 0;
 
@@ -166,11 +199,16 @@ export async function updatePackage(
       name: d.name,
       setup_price_cents: dollarsToCents(d.setupPrice),
       monthly_price_cents: dollarsToCents(d.monthlyPrice),
+      is_from_pricing: d.isFromPricing,
       setup_software_cost_cents: dollarsToCents(d.setupSoftwareCost),
       monthly_software_cost_cents: dollarsToCents(d.monthlySoftwareCost),
       setup_hours: d.setupHours,
       monthly_hours: d.monthlyHours,
       labour_rate_cents_per_hour: dollarsToCents(d.labourRate),
+      usage_billing: d.usageBilling,
+      estimated_monthly_usage_cost_cents: dollarsToCents(d.estimatedMonthlyUsageCost),
+      usage_allowance_cents: dollarsToCents(d.usageAllowance),
+      assumptions_reviewed: d.assumptionsReviewed,
       is_placeholder: !entered,
       updated_at: new Date().toISOString(),
     })
@@ -182,6 +220,7 @@ export async function updatePackage(
   if (error) return { status: "error", message: error.message };
 
   revalidatePath("/settings");
+  revalidatePath("/dashboard");
   return { status: "success", message: `${d.name} saved.` };
 }
 

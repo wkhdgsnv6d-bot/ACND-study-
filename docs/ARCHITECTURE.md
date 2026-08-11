@@ -316,16 +316,41 @@ SM-2 adapted. Cards come from two sources: concepts a lesson declares, and
 a failed quiz from a score into a study plan. Mistake-born cards return sooner
 and are prioritised in a session.
 
-### `finance.ts`
+### `finance.ts` — Ascend's economics
 
 Margins, LTV, CAC, churn, MRR movement with net revenue retention, capacity,
 hiring triggers and project estimation. Money is handled in whole cents
 throughout and converted at the edges.
 
-This engine is shared by the Business Lab calculators *and* by worked exercises
-inside lessons, which is what makes the spec's rule work: a lesson asking you to
-compute the Growth package's gross margin reads the same package record the
-calculator does. The exercise is about your business, not a textbook company.
+`packageEconomics()` is the single entry point for a package's full picture,
+returning setup, monthly recurring, annual recurring and first-year figures,
+each with revenue, software cost, absorbed usage cost, labour cost, delivery
+hours, effective hourly revenue and profit, gross profit and gross margin —
+plus ARR and annual recurring gross profit.
+
+**Nothing hard-codes a price.** Callers load Ascend's packages from Settings and
+pass them in, so the Business Lab calculators, the client-profitability view and
+the worked exercises inside lessons all read the same rows and cannot disagree
+with each other. `src/lib/domain/pricing.ts` holds the seed values, used exactly
+once when a new account is bootstrapped.
+
+Three modelling decisions are encoded rather than assumed:
+
+- **"From" pricing.** Growth and Partner are quoted as a floor. `isFromPricing`
+  travels with the package and `priceLabel()` renders "From $4,500", so no
+  surface can present them as a flat rate.
+- **Usage costs.** Third-party and usage-based costs — AI and API usage, voice
+  minutes, phone numbers, SMS, CRM licences, domains, premium plugins and
+  subscriptions — default to `separate`: billed on rather than absorbed. They
+  scale with the client's activity and Ascend does not control them, so
+  absorbing them silently is how a healthy margin becomes a loss on the client
+  who succeeds most. `allowance` absorbs up to a defined figure and bills the
+  overage; `included` absorbs everything and warns about it.
+- **Prices versus assumptions.** Setup and monthly prices are commitments.
+  Delivery hours, software cost and labour rate are internal planning
+  assumptions, and `assumptionsReviewed` stays false until they have been
+  checked against real delivery data — until then every derived figure carries
+  that caveat as a visible warning.
 
 ---
 

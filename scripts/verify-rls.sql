@@ -11,34 +11,6 @@
 
 \set ON_ERROR_STOP on
 
--- ------------------------------------------------------------------------
--- Stand in for the parts of a Supabase project the migration depends on.
--- ------------------------------------------------------------------------
-create schema if not exists auth;
-
-create table if not exists auth.users (
-  id uuid primary key default gen_random_uuid(),
-  email text unique
-);
-
-create or replace function auth.uid() returns uuid
-language sql stable as $$
-  select nullif(current_setting('request.jwt.claim.sub', true), '')::uuid
-$$;
-
-do $$ begin
-  if not exists (select from pg_roles where rolname = 'anon') then
-    create role anon nologin noinherit;
-  end if;
-  if not exists (select from pg_roles where rolname = 'authenticated') then
-    create role authenticated nologin noinherit;
-  end if;
-end $$;
-
-grant usage on schema public to anon, authenticated;
-
-\ir ../drizzle/0000_flawless_invaders.sql
-
 -- Supabase grants table privileges to `authenticated` through default
 -- privileges. Replicate that so this exercises RLS, not a missing GRANT.
 grant all on all tables in schema public to authenticated;

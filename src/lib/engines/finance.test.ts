@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 
+import { PACKAGE_SEEDS } from "@/lib/domain/pricing";
 import {
+  absorbedUsageCostCents,
   arr,
   cac,
   capacity,
@@ -15,61 +17,280 @@ import {
   monthlyChurnRate,
   monthlyMargin,
   mrrMovement,
+  packageEconomics,
+  passThroughUsageCostCents,
+  priceLabel,
+  recurringClientCapacity,
   setupMargin,
   type ServicePackage,
 } from "@/lib/engines/finance";
 
-/**
- * Placeholder economics until the real Ascend package numbers are entered in
- * Settings. Tests assert the *arithmetic*, so they stay valid whatever the
- * prices become.
- */
-const growth: ServicePackage = {
-  tier: "growth",
-  name: "Growth",
-  setupPriceCents: dollarsToCents(6000),
-  monthlyPriceCents: dollarsToCents(1200),
-  monthlySoftwareCostCents: dollarsToCents(180),
-  setupSoftwareCostCents: dollarsToCents(200),
-  setupHours: 40,
-  monthlyHours: 6,
-  labourRateCentsPerHour: dollarsToCents(60),
-};
+/** Ascend's real Growth package, as seeded into Settings. */
+function growth(overrides: Partial<ServicePackage> = {}): ServicePackage {
+  const seed = PACKAGE_SEEDS.find((p) => p.tier === "growth")!;
+  return {
+    tier: seed.tier,
+    name: seed.name,
+    setupPriceCents: seed.setupPriceCents,
+    monthlyPriceCents: seed.monthlyPriceCents,
+    isFromPricing: seed.isFromPricing,
+    setupSoftwareCostCents: seed.setupSoftwareCostCents,
+    monthlySoftwareCostCents: seed.monthlySoftwareCostCents,
+    setupHours: seed.setupHours,
+    monthlyHours: seed.monthlyHours,
+    labourRateCentsPerHour: seed.labourRateCentsPerHour,
+    usageBilling: seed.usageBilling,
+    estimatedMonthlyUsageCostCents: seed.estimatedMonthlyUsageCostCents,
+    usageAllowanceCents: seed.usageAllowanceCents,
+    assumptionsReviewed: false,
+    ...overrides,
+  };
+}
+
+describe("seeded Ascend packages", () => {
+  it("carries the founder's real prices", () => {
+    const byTier = Object.fromEntries(PACKAGE_SEEDS.map((p) => [p.tier, p]));
+
+    expect(byTier.essential!.setupPriceCents).toBe(dollarsToCents(1_500));
+    expect(byTier.essential!.monthlyPriceCents).toBe(dollarsToCents(149));
+    expect(byTier.essential!.monthlySoftwareCostCents).toBe(dollarsToCents(35));
+    expect(byTier.essential!.setupHours).toBe(15);
+
+    expect(byTier.growth!.setupPriceCents).toBe(dollarsToCents(4_500));
+    expect(byTier.growth!.monthlyPriceCents).toBe(dollarsToCents(799));
+    expect(byTier.growth!.monthlySoftwareCostCents).toBe(dollarsToCents(180));
+    expect(byTier.growth!.setupHours).toBe(35);
+
+    expect(byTier.partner!.setupPriceCents).toBe(dollarsToCents(8_000));
+    expect(byTier.partner!.monthlyPriceCents).toBe(dollarsToCents(1_500));
+    expect(byTier.partner!.monthlySoftwareCostCents).toBe(dollarsToCents(350));
+    expect(byTier.partner!.setupHours).toBe(60);
+  });
+
+  it("keeps Growth and Partner as `from` pricing and Essential as fixed", () => {
+    const byTier = Object.fromEntries(PACKAGE_SEEDS.map((p) => [p.tier, p]));
+
+    expect(byTier.essential!.isFromPricing).toBe(false);
+    expect(byTier.growth!.isFromPricing).toBe(true);
+    expect(byTier.partner!.isFromPricing).toBe(true);
+  });
+
+  it("bills third-party and usage costs separately on every tier", () => {
+    for (const seed of PACKAGE_SEEDS) {
+      expect(seed.usageBilling).toBe("separate");
+    }
+  });
+});
+
+describe("priceLabel", () => {
+  it("presents `from` pricing as a floor, never a flat rate", () => {
+    expect(priceLabel({ isFromPricing: true }, dollarsToCents(4_500))).toBe(
+      "From $4,500",
+    );
+    expect(priceLabel({ isFromPricing: false }, dollarsToCents(1_500))).toBe("$1,500");
+  });
+});
+
+describe("usage cost treatment", () => {
+  it("absorbs nothing when usage is billed separately", () => {
+    const pkg = growth({
+      usageBilling: "separate",
+      estimatedMonthlyUsageCostCents: dollarsToCents(400),
+    });
+
+    expect(absorbedUsageCostCents(pkg)).toBe(0);
+    expect(passThroughUsageCostCents(pkg)).toBe(dollarsToCents(400));
+    expect(monthlyMargin(pkg).breakdown.usageCostCents).toBe(0);
+  });
+
+  it("absorbs up to the allowance and bills on the overage", () => {
+    const pkg = growth({
+      usageBilling: "allowance",
+      estimatedMonthlyUsageCostCents: dollarsToCents(120),
+      usageAllowanceCents: dollarsToCents(50),
+    });
+
+    expect(absorbedUsageCostCents(pkg)).toBe(dollarsToCents(50));
+    expect(passThroughUsageCostCents(pkg)).toBe(dollarsToCents(70));
+  });
+
+  it("absorbs only the actual usage when it falls under the allowance", () => {
+    const pkg = growth({
+      usageBilling: "allowance",
+      estimatedMonthlyUsageCostCents: dollarsToCents(30),
+      usageAllowanceCents: dollarsToCents(50),
+    });
+
+    expect(absorbedUsageCostCents(pkg)).toBe(dollarsToCents(30));
+    expect(passThroughUsageCostCents(pkg)).toBe(0);
+  });
+
+  it("absorbs the whole cost when it is included in the fee", () => {
+    const pkg = growth({
+      usageBilling: "included",
+      estimatedMonthlyUsageCostCents: dollarsToCents(220),
+    });
+
+    expect(absorbedUsageCostCents(pkg)).toBe(dollarsToCents(220));
+    expect(passThroughUsageCostCents(pkg)).toBe(0);
+    expect(monthlyMargin(pkg).breakdown.usageCostCents).toBe(dollarsToCents(220));
+  });
+});
 
 describe("package margins", () => {
-  it("computes setup gross profit and margin", () => {
-    const result = setupMargin(growth);
+  it("computes setup gross profit and margin from Ascend's Growth figures", () => {
+    const result = setupMargin(growth());
 
-    // 40h × $60 = $2,400 labour + $200 software = $2,600 cost against $6,000.
-    expect(result.costCents).toBe(dollarsToCents(2600));
-    expect(result.grossProfitCents).toBe(dollarsToCents(3400));
-    expect(result.grossMargin).toBeCloseTo(3400 / 6000);
+    // 35h × $60 = $2,100 labour, no setup software cost, against $4,500.
+    expect(result.costCents).toBe(dollarsToCents(2_100));
+    expect(result.grossProfitCents).toBe(dollarsToCents(2_400));
+    expect(result.grossMargin).toBeCloseTo(2400 / 4500);
   });
 
   it("computes recurring gross profit and margin", () => {
-    const result = monthlyMargin(growth);
+    const result = monthlyMargin(growth());
 
-    // 6h × $60 = $360 labour + $180 software = $540 against $1,200.
-    expect(result.costCents).toBe(dollarsToCents(540));
-    expect(result.grossMargin).toBeCloseTo(660 / 1200);
+    // 3h × $60 = $180 labour + $180 software = $360 against $799.
+    expect(result.costCents).toBe(dollarsToCents(360));
+    expect(result.grossProfitCents).toBe(dollarsToCents(439));
+    expect(result.grossMargin).toBeCloseTo(439 / 799);
   });
 
   it("combines setup and recurring over a client lifetime", () => {
-    const result = lifetimeMargin(growth, 12);
+    const result = lifetimeMargin(growth(), 12);
 
-    expect(result.revenueCents).toBe(dollarsToCents(6000 + 1200 * 12));
-    expect(result.costCents).toBe(dollarsToCents(2600 + 540 * 12));
+    expect(result.revenueCents).toBe(dollarsToCents(4_500 + 799 * 12));
+    expect(result.costCents).toBe(dollarsToCents(2_100 + 360 * 12));
   });
 
   it("returns a null margin rather than dividing by zero", () => {
-    const free: ServicePackage = { ...growth, setupPriceCents: 0, setupHours: 0, setupSoftwareCostCents: 0 };
-    expect(setupMargin(free).grossMargin).toBeNull();
+    expect(
+      setupMargin(growth({ setupPriceCents: 0, setupHours: 0 })).grossMargin,
+    ).toBeNull();
   });
 
   it("reports a negative gross profit rather than clamping it", () => {
-    const underpriced: ServicePackage = { ...growth, setupPriceCents: dollarsToCents(1000) };
-    expect(setupMargin(underpriced).grossProfitCents).toBeLessThan(0);
+    expect(
+      setupMargin(growth({ setupPriceCents: dollarsToCents(500) })).grossProfitCents,
+    ).toBeLessThan(0);
   });
+});
+
+describe("packageEconomics", () => {
+  const economics = packageEconomics(growth());
+
+  it("reports setup revenue, costs, hours and effective hourly rates", () => {
+    expect(economics.setup.revenueCents).toBe(dollarsToCents(4_500));
+    expect(economics.setup.labourCostCents).toBe(dollarsToCents(2_100));
+    expect(economics.setup.hours).toBe(35);
+    // $4,500 over 35 hours.
+    expect(economics.setup.effectiveHourlyRevenueCents).toBeCloseTo(
+      dollarsToCents(4_500) / 35,
+    );
+    expect(economics.setup.effectiveHourlyProfitCents).toBeCloseTo(
+      dollarsToCents(2_400) / 35,
+    );
+  });
+
+  it("reports monthly recurring revenue and gross profit", () => {
+    expect(economics.monthly.revenueCents).toBe(dollarsToCents(799));
+    expect(economics.monthly.softwareCostCents).toBe(dollarsToCents(180));
+    expect(economics.monthly.grossProfitCents).toBe(dollarsToCents(439));
+    expect(economics.monthly.grossMargin).toBeCloseTo(439 / 799);
+  });
+
+  it("reports annual recurring revenue and annual recurring gross profit", () => {
+    expect(economics.annualRecurring.revenueCents).toBe(dollarsToCents(799 * 12));
+    expect(economics.annualRecurring.grossProfitCents).toBe(dollarsToCents(439 * 12));
+    expect(economics.annualRecurring.grossMargin).toBeCloseTo(439 / 799);
+    expect(economics.annualRecurring.hours).toBe(36);
+  });
+
+  it("reports the first year as setup plus twelve recurring months", () => {
+    expect(economics.firstYear.revenueCents).toBe(dollarsToCents(4_500 + 799 * 12));
+    expect(economics.firstYear.grossProfitCents).toBe(
+      dollarsToCents(2_400 + 439 * 12),
+    );
+    expect(economics.firstYear.hours).toBe(35 + 36);
+  });
+
+  it("carries the `from` pricing flag through, so it can never be shown as flat", () => {
+    expect(economics.isFromPricing).toBe(true);
+  });
+
+  it("warns while the planning assumptions are unreviewed", () => {
+    expect(economics.warnings.some((w) => w.includes("unreviewed estimates"))).toBe(
+      true,
+    );
+    expect(
+      packageEconomics(growth({ assumptionsReviewed: true })).warnings.some((w) =>
+        w.includes("unreviewed estimates"),
+      ),
+    ).toBe(false);
+  });
+
+  it("warns when usage costs are absorbed rather than billed on", () => {
+    const absorbed = packageEconomics(
+      growth({
+        usageBilling: "included",
+        estimatedMonthlyUsageCostCents: dollarsToCents(200),
+        assumptionsReviewed: true,
+      }),
+    );
+
+    expect(absorbed.warnings.some((w) => w.includes("scale with the client"))).toBe(
+      true,
+    );
+  });
+
+  it("warns when expected usage already exceeds the allowance", () => {
+    const overAllowance = packageEconomics(
+      growth({
+        usageBilling: "allowance",
+        estimatedMonthlyUsageCostCents: dollarsToCents(200),
+        usageAllowanceCents: dollarsToCents(50),
+        assumptionsReviewed: true,
+      }),
+    );
+
+    expect(
+      overAllowance.warnings.some((w) => w.includes("exceeds the included allowance")),
+    ).toBe(true);
+  });
+
+  it("warns on a loss-making monthly fee", () => {
+    const losing = packageEconomics(
+      growth({ monthlyPriceCents: dollarsToCents(100), assumptionsReviewed: true }),
+    );
+
+    expect(losing.monthly.grossProfitCents).toBeLessThan(0);
+    expect(losing.warnings.some((w) => w.includes("loses money"))).toBe(true);
+  });
+
+  it("stays quiet when the economics are healthy and reviewed", () => {
+    const healthy = packageEconomics(growth({ assumptionsReviewed: true }));
+    expect(healthy.warnings).toEqual([]);
+  });
+
+  it("handles a zero-hour package without dividing by zero", () => {
+    const noHours = packageEconomics(growth({ setupHours: 0, monthlyHours: 0 }));
+
+    expect(noHours.setup.effectiveHourlyRevenueCents).toBeNull();
+    expect(noHours.monthly.effectiveHourlyProfitCents).toBeNull();
+  });
+});
+
+describe("every seeded package is economically viable at its assumptions", () => {
+  it.each(PACKAGE_SEEDS.map((s) => [s.name, s] as const))(
+    "%s clears a positive gross profit on setup and recurring",
+    (_name, seed) => {
+      const economics = packageEconomics({ ...seed, assumptionsReviewed: true });
+
+      expect(economics.setup.grossProfitCents).toBeGreaterThan(0);
+      expect(economics.monthly.grossProfitCents).toBeGreaterThan(0);
+      expect(economics.annualRecurring.grossProfitCents).toBeGreaterThan(0);
+    },
+  );
 });
 
 describe("agency metrics", () => {
@@ -82,13 +303,13 @@ describe("agency metrics", () => {
 
   it("computes gross-profit LTV including setup profit", () => {
     const value = ltv({
-      monthlyGrossProfitCents: dollarsToCents(660),
+      monthlyGrossProfitCents: dollarsToCents(439),
       monthlyChurnRate: 0.05,
-      setupGrossProfitCents: dollarsToCents(3400),
+      setupGrossProfitCents: dollarsToCents(2_400),
     });
 
-    // $660 / 0.05 = $13,200 recurring, plus $3,400 setup.
-    expect(value).toBe(dollarsToCents(16_600));
+    // $439 / 0.05 = $8,780 recurring, plus $2,400 setup.
+    expect(value).toBe(dollarsToCents(11_180));
   });
 
   it("returns null LTV when churn is zero, because it is unbounded", () => {
@@ -183,6 +404,21 @@ describe("capacity", () => {
 
     expect(result.status).toBe("underutilised");
     expect(result.advice).toContain("sales");
+  });
+});
+
+describe("recurringClientCapacity", () => {
+  it("counts how many more clients the free hours can carry", () => {
+    // 10 free hours a week ≈ 43.3 a month; Growth takes 3 a month.
+    expect(
+      recurringClientCapacity({ freeHoursPerWeek: 10, monthlyHoursPerClient: 3 }),
+    ).toBe(14);
+  });
+
+  it("returns null when a client takes no maintenance hours at all", () => {
+    expect(
+      recurringClientCapacity({ freeHoursPerWeek: 10, monthlyHoursPerClient: 0 }),
+    ).toBeNull();
   });
 });
 

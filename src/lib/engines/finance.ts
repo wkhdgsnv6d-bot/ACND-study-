@@ -3,10 +3,9 @@
  *
  * Every margin, pricing and capacity calculation in the platform routes through
  * here — the Business Lab calculators, the client-profitability view, and the
- * worked exercises inside lessons. That matters because of the spec's rule that
- * exercises use *Ascend's real numbers*: a lesson asking you to compute the
- * Growth package's gross margin reads the same package record the calculator
- * does, so the answer is your business, not a textbook company.
+ * worked exercises inside lessons. Nothing anywhere hard-codes a package price:
+ * callers load Ascend's packages from Settings and pass them in, so updating a
+ * price in one place updates every exercise and simulation that references it.
  *
  * All money is handled in whole cents to avoid float drift, and exposed in
  * dollars at the edges.
@@ -14,24 +13,67 @@
 
 export type PackageTier = "essential" | "growth" | "partner";
 
+/**
+ * How third-party and usage-based costs are handled — AI and API usage, voice
+ * minutes, phone numbers, SMS, CRM licences, domains, premium plugins and
+ * subscriptions.
+ *
+ * This matters more than it looks. Usage costs scale with the client's activity
+ * and Ascend does not control them, so absorbing them silently is how a healthy
+ * margin quietly becomes a loss on the client who succeeds most.
+ */
+export type UsageBilling =
+  /** Billed to the client separately, or paid by them directly. Excluded from Ascend's margin. */
+  | "separate"
+  /** A defined monthly allowance is included; usage beyond it is billed on. */
+  | "allowance"
+  /** Absorbed entirely into the monthly fee. */
+  | "included";
+
 export interface ServicePackage {
   tier: PackageTier;
   name: string;
-  /** One-off setup fee charged at project start, in cents. */
+
+  /* -- Customer-facing pricing -- */
+  /** One-off setup fee, in cents. */
   setupPriceCents: number;
   /** Recurring monthly fee, in cents. */
   monthlyPriceCents: number;
+  /**
+   * Whether this is "from" pricing. Growth and Partner are quoted as a floor,
+   * not a fixed price, and the platform must never present them as a flat rate.
+   */
+  isFromPricing: boolean;
+
+  /* -- Internal planning assumptions (editable, not customer-facing) -- */
   /** Third-party software cost to deliver this package per month, in cents. */
   monthlySoftwareCostCents: number;
   /** One-off software/setup cost, in cents. */
   setupSoftwareCostCents: number;
-  /** Hours of your time to deliver the initial build. */
+  /** Estimated delivery hours for the initial build. */
   setupHours: number;
-  /** Hours per month to maintain it. */
+  /** Estimated hours per month to maintain it. */
   monthlyHours: number;
   /** What an hour of delivery labour costs Ascend, in cents. */
   labourRateCentsPerHour: number;
+
+  /* -- Third-party and usage-based costs -- */
+  usageBilling: UsageBilling;
+  /** Expected monthly usage cost, in cents. Used for modelling regardless of billing treatment. */
+  estimatedMonthlyUsageCostCents: number;
+  /** Monthly usage covered by the fee when `usageBilling` is `allowance`, in cents. */
+  usageAllowanceCents: number;
+
+  /**
+   * False until the planning assumptions above have actually been reviewed
+   * against delivery data. Seeded values are estimates, and the UI says so.
+   */
+  assumptionsReviewed: boolean;
 }
+
+/* ------------------------------------------------------------------ */
+/* Core margin                                                         */
+/* ------------------------------------------------------------------ */
 
 export interface MarginResult {
   revenueCents: number;
@@ -42,19 +84,69 @@ export interface MarginResult {
   breakdown: {
     labourCostCents: number;
     softwareCostCents: number;
+    usageCostCents: number;
   };
 }
 
+function buildMargin(
+  revenueCents: number,
+  labourCostCents: number,
+  softwareCostCents: number,
+  usageCostCents = 0,
+): MarginResult {
+  const costCents = labourCostCents + softwareCostCents + usageCostCents;
+  const grossProfitCents = revenueCents - costCents;
+  return {
+    revenueCents,
+    costCents,
+    grossProfitCents,
+    grossMargin: revenueCents === 0 ? null : grossProfitCents / revenueCents,
+    breakdown: { labourCostCents, softwareCostCents, usageCostCents },
+  };
+}
+
+/**
+ * The share of estimated usage cost that Ascend actually absorbs.
+ *
+ * - `separate`: none — it is billed on or paid direct, so it belongs in neither
+ *   Ascend's revenue nor its costs.
+ * - `allowance`: up to the allowance. Overage is billed on, so it nets out.
+ * - `included`: all of it.
+ */
+export function absorbedUsageCostCents(pkg: ServicePackage): number {
+  switch (pkg.usageBilling) {
+    case "separate":
+      return 0;
+    case "allowance":
+      return Math.min(pkg.estimatedMonthlyUsageCostCents, pkg.usageAllowanceCents);
+    case "included":
+      return pkg.estimatedMonthlyUsageCostCents;
+  }
+}
+
+/** Usage cost that passes through to the client rather than hitting margin. */
+export function passThroughUsageCostCents(pkg: ServicePackage): number {
+  return Math.max(
+    0,
+    pkg.estimatedMonthlyUsageCostCents - absorbedUsageCostCents(pkg),
+  );
+}
+
 export function setupMargin(pkg: ServicePackage): MarginResult {
-  const labour = pkg.setupHours * pkg.labourRateCentsPerHour;
-  const software = pkg.setupSoftwareCostCents;
-  return buildMargin(pkg.setupPriceCents, labour, software);
+  return buildMargin(
+    pkg.setupPriceCents,
+    pkg.setupHours * pkg.labourRateCentsPerHour,
+    pkg.setupSoftwareCostCents,
+  );
 }
 
 export function monthlyMargin(pkg: ServicePackage): MarginResult {
-  const labour = pkg.monthlyHours * pkg.labourRateCentsPerHour;
-  const software = pkg.monthlySoftwareCostCents;
-  return buildMargin(pkg.monthlyPriceCents, labour, software);
+  return buildMargin(
+    pkg.monthlyPriceCents,
+    pkg.monthlyHours * pkg.labourRateCentsPerHour,
+    pkg.monthlySoftwareCostCents,
+    absorbedUsageCostCents(pkg),
+  );
 }
 
 /**
@@ -73,23 +165,202 @@ export function lifetimeMargin(
     setup.breakdown.labourCostCents + monthly.breakdown.labourCostCents * lifetimeMonths,
     setup.breakdown.softwareCostCents +
       monthly.breakdown.softwareCostCents * lifetimeMonths,
+    monthly.breakdown.usageCostCents * lifetimeMonths,
   );
 }
 
-function buildMargin(
-  revenueCents: number,
-  labourCostCents: number,
-  softwareCostCents: number,
-): MarginResult {
-  const costCents = labourCostCents + softwareCostCents;
-  const grossProfitCents = revenueCents - costCents;
+/* ------------------------------------------------------------------ */
+/* Full package economics                                              */
+/* ------------------------------------------------------------------ */
+
+export interface PhaseEconomics {
+  revenueCents: number;
+  softwareCostCents: number;
+  usageCostCents: number;
+  labourCostCents: number;
+  totalCostCents: number;
+  hours: number;
+  grossProfitCents: number;
+  grossMargin: number | null;
+  /** Revenue per delivery hour — what an hour of your time actually earns. */
+  effectiveHourlyRevenueCents: number | null;
+  /** Gross profit per delivery hour, which is the more honest version. */
+  effectiveHourlyProfitCents: number | null;
+}
+
+export interface PackageEconomics {
+  tier: PackageTier;
+  name: string;
+  isFromPricing: boolean;
+  assumptionsReviewed: boolean;
+
+  /** One-off build. */
+  setup: PhaseEconomics;
+  /** A single recurring month. */
+  monthly: PhaseEconomics;
+  /** Twelve recurring months — ARR and annual recurring gross profit. */
+  annualRecurring: PhaseEconomics;
+  /** Setup plus twelve recurring months, the realistic first-year picture. */
+  firstYear: PhaseEconomics;
+
+  /** Usage cost billed on to the client rather than absorbed, per month. */
+  passThroughUsageCentsPerMonth: number;
+  usageBilling: UsageBilling;
+
+  warnings: string[];
+}
+
+function phase(options: {
+  revenueCents: number;
+  softwareCostCents: number;
+  usageCostCents: number;
+  hours: number;
+  labourRateCentsPerHour: number;
+}): PhaseEconomics {
+  const labourCostCents = options.hours * options.labourRateCentsPerHour;
+  const totalCostCents =
+    labourCostCents + options.softwareCostCents + options.usageCostCents;
+  const grossProfitCents = options.revenueCents - totalCostCents;
+
   return {
-    revenueCents,
-    costCents,
+    revenueCents: options.revenueCents,
+    softwareCostCents: options.softwareCostCents,
+    usageCostCents: options.usageCostCents,
+    labourCostCents,
+    totalCostCents,
+    hours: options.hours,
     grossProfitCents,
-    grossMargin: revenueCents === 0 ? null : grossProfitCents / revenueCents,
-    breakdown: { labourCostCents, softwareCostCents },
+    grossMargin: options.revenueCents === 0 ? null : grossProfitCents / options.revenueCents,
+    effectiveHourlyRevenueCents:
+      options.hours === 0 ? null : options.revenueCents / options.hours,
+    effectiveHourlyProfitCents:
+      options.hours === 0 ? null : grossProfitCents / options.hours,
   };
+}
+
+/**
+ * The complete economic picture for one package: setup, recurring, annual
+ * recurring and first year, each with revenue, every cost category, delivery
+ * hours, effective hourly rates, gross profit and gross margin.
+ *
+ * Everything the Business Lab, the client-profitability view and the in-lesson
+ * pricing exercises need comes from this one function, so those surfaces cannot
+ * disagree with each other about what a package earns.
+ */
+export function packageEconomics(pkg: ServicePackage): PackageEconomics {
+  const absorbedUsage = absorbedUsageCostCents(pkg);
+
+  const setup = phase({
+    revenueCents: pkg.setupPriceCents,
+    softwareCostCents: pkg.setupSoftwareCostCents,
+    usageCostCents: 0,
+    hours: pkg.setupHours,
+    labourRateCentsPerHour: pkg.labourRateCentsPerHour,
+  });
+
+  const monthly = phase({
+    revenueCents: pkg.monthlyPriceCents,
+    softwareCostCents: pkg.monthlySoftwareCostCents,
+    usageCostCents: absorbedUsage,
+    hours: pkg.monthlyHours,
+    labourRateCentsPerHour: pkg.labourRateCentsPerHour,
+  });
+
+  const annualRecurring = phase({
+    revenueCents: pkg.monthlyPriceCents * 12,
+    softwareCostCents: pkg.monthlySoftwareCostCents * 12,
+    usageCostCents: absorbedUsage * 12,
+    hours: pkg.monthlyHours * 12,
+    labourRateCentsPerHour: pkg.labourRateCentsPerHour,
+  });
+
+  const firstYear = phase({
+    revenueCents: pkg.setupPriceCents + pkg.monthlyPriceCents * 12,
+    softwareCostCents: pkg.setupSoftwareCostCents + pkg.monthlySoftwareCostCents * 12,
+    usageCostCents: absorbedUsage * 12,
+    hours: pkg.setupHours + pkg.monthlyHours * 12,
+    labourRateCentsPerHour: pkg.labourRateCentsPerHour,
+  });
+
+  return {
+    tier: pkg.tier,
+    name: pkg.name,
+    isFromPricing: pkg.isFromPricing,
+    assumptionsReviewed: pkg.assumptionsReviewed,
+    setup,
+    monthly,
+    annualRecurring,
+    firstYear,
+    passThroughUsageCentsPerMonth: passThroughUsageCostCents(pkg),
+    usageBilling: pkg.usageBilling,
+    warnings: packageWarnings(pkg, { setup, monthly, firstYear }),
+  };
+}
+
+function packageWarnings(
+  pkg: ServicePackage,
+  phases: { setup: PhaseEconomics; monthly: PhaseEconomics; firstYear: PhaseEconomics },
+): string[] {
+  const warnings: string[] = [];
+
+  if (phases.setup.grossProfitCents < 0) {
+    warnings.push(
+      "The setup fee does not cover the estimated delivery cost. Either the price is too low or the hours estimate is too high — find out which before quoting it.",
+    );
+  }
+  if (phases.monthly.grossProfitCents < 0) {
+    warnings.push(
+      "The monthly fee loses money at these assumptions. Recurring revenue that costs more to service than it earns is worse than no recurring revenue.",
+    );
+  }
+  if (
+    phases.monthly.grossMargin !== null &&
+    phases.monthly.grossMargin >= 0 &&
+    phases.monthly.grossMargin < 0.5
+  ) {
+    warnings.push(
+      "Recurring gross margin is below 50%. On a services business that leaves little for sales, admin and the months that go wrong.",
+    );
+  }
+  if (
+    phases.setup.grossMargin !== null &&
+    phases.setup.grossMargin >= 0 &&
+    phases.setup.grossMargin < 0.4
+  ) {
+    warnings.push(
+      "Setup gross margin is below 40%. Project work carries the overrun risk, so it needs more headroom than recurring work, not less.",
+    );
+  }
+  if (pkg.usageBilling === "included" && pkg.estimatedMonthlyUsageCostCents > 0) {
+    warnings.push(
+      "Usage costs are absorbed into the monthly fee. These scale with the client's activity and Ascend does not control them — the client who succeeds most will damage this margin the most.",
+    );
+  }
+  if (
+    pkg.usageBilling === "allowance" &&
+    pkg.estimatedMonthlyUsageCostCents > pkg.usageAllowanceCents
+  ) {
+    warnings.push(
+      "Expected usage already exceeds the included allowance, so overage billing will be the norm rather than the exception. Make sure the client understands that before they sign.",
+    );
+  }
+  if (!pkg.assumptionsReviewed) {
+    warnings.push(
+      "Delivery hours and software costs are unreviewed estimates. Every figure here inherits that uncertainty until real delivery data replaces them.",
+    );
+  }
+
+  return warnings;
+}
+
+/** Display label that respects "from" pricing rather than implying a flat rate. */
+export function priceLabel(
+  pkg: Pick<ServicePackage, "isFromPricing">,
+  cents: number,
+  options?: { currency?: string; locale?: string },
+): string {
+  const formatted = formatCurrency(cents, options);
+  return pkg.isFromPricing ? `From ${formatted}` : formatted;
 }
 
 /* ------------------------------------------------------------------ */
@@ -120,7 +391,10 @@ export function ltv(options: {
   return recurring + (options.setupGrossProfitCents ?? 0);
 }
 
-export function ltvToCacRatio(ltvCents: number | null, cacCents: number | null): number | null {
+export function ltvToCacRatio(
+  ltvCents: number | null,
+  cacCents: number | null,
+): number | null {
   if (ltvCents === null || cacCents === null || cacCents === 0) return null;
   return ltvCents / cacCents;
 }
@@ -166,7 +440,10 @@ export function mrrMovement(movement: MrrMovement): {
     movement.churnedCents;
 
   const retained =
-    movement.openingCents + movement.expansionCents - movement.contractionCents - movement.churnedCents;
+    movement.openingCents +
+    movement.expansionCents -
+    movement.contractionCents -
+    movement.churnedCents;
 
   return {
     closingCents,
@@ -228,6 +505,19 @@ export function capacity(input: CapacityInput): CapacityResult {
   }
 
   return { totalHours, committedHours, freeHours, utilisation, status, advice };
+}
+
+/**
+ * How many more clients of a given package current capacity can carry, counting
+ * only the recurring maintenance load.
+ */
+export function recurringClientCapacity(options: {
+  freeHoursPerWeek: number;
+  monthlyHoursPerClient: number;
+}): number | null {
+  if (options.monthlyHoursPerClient <= 0) return null;
+  const freeHoursPerMonth = options.freeHoursPerWeek * (52 / 12);
+  return Math.floor(freeHoursPerMonth / options.monthlyHoursPerClient);
 }
 
 export interface HiringTriggerInput extends CapacityInput {
@@ -301,8 +591,8 @@ export function hiringTrigger(input: HiringTriggerInput): HiringTriggerResult {
     affordabilityMonths,
     recommendation: shouldHire
       ? "The conditions for a first hire are met. Write the scorecard before writing the job ad."
-      : conditions.find((c) => !c.met)?.detail ??
-        "Not yet — one or more conditions are unmet.",
+      : (conditions.find((c) => !c.met)?.detail ??
+        "Not yet — one or more conditions are unmet."),
   };
 }
 
@@ -398,6 +688,10 @@ export function formatCurrency(
 export function formatPercent(value: number | null, fractionDigits = 0): string {
   if (value === null || Number.isNaN(value)) return "—";
   return `${(value * 100).toFixed(fractionDigits)}%`;
+}
+
+export function formatHours(hours: number): string {
+  return `${Number.isInteger(hours) ? hours : hours.toFixed(1)}h`;
 }
 
 function clamp(value: number, min: number, max: number): number {

@@ -8,6 +8,13 @@
       "when": 1786366792012,
       "tag": "0000_flawless_invaders",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1786449827249,
+      "tag": "0001_cheerful_lethal_legion",
+      "breakpoints": true
     }
   ]
 }

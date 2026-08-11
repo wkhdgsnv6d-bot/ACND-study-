@@ -1,7 +1,8 @@
 import type { SupabaseClient, User } from "@supabase/supabase-js";
 
+import { PACKAGE_SEEDS } from "@/lib/domain/pricing";
+import type { ServicePackage } from "@/lib/engines/finance";
 import { DEFAULT_TERM_4_CONFIG, type Term4UnlockConfig } from "@/lib/engines/unlock";
-import type { PackageTier, ServicePackage } from "@/lib/engines/finance";
 import { createClient } from "@/lib/supabase/server";
 
 /**
@@ -9,14 +10,19 @@ import { createClient } from "@/lib/supabase/server";
  *
  * The package rows here are what make the specification's rule work: a lesson
  * asking you to compute the Growth package's gross margin reads these exact
- * numbers, not a textbook company's. Until you enter yours, the seeded rows are
- * flagged `isPlaceholder` and the UI says so plainly rather than presenting
- * invented figures as though they were real.
+ * rows, not a textbook company's — as does every Business Lab calculator and
+ * financial simulation. Nothing hard-codes a price anywhere.
+ *
+ * Prices are the founder's real figures. The internal planning assumptions
+ * alongside them — maintenance hours and labour rate — are seeded estimates,
+ * and `assumptionsReviewed` records that fact until delivery data replaces
+ * them.
  */
 
 export interface PackageRow extends ServicePackage {
   id: string;
   description: string | null;
+  /** True only while the row still holds unedited seed prices. */
   isPlaceholder: boolean;
 }
 
@@ -28,56 +34,9 @@ export interface UserSettings {
   deliverableHoursPerWeek: number;
   term4Unlock: Term4UnlockConfig;
   packages: PackageRow[];
+  /** Set when a query failed, so the UI can say so instead of showing defaults. */
   error: string | null;
 }
-
-/**
- * Placeholder economics. Deliberately round numbers that look like defaults
- * rather than like researched figures, so they are never mistaken for yours.
- */
-const PLACEHOLDER_PACKAGES: Array<
-  Omit<PackageRow, "id" | "tier"> & { tier: PackageTier }
-> = [
-  {
-    tier: "essential",
-    name: "Essential",
-    description: "Website and basic lead capture.",
-    setupPriceCents: 0,
-    monthlyPriceCents: 0,
-    setupSoftwareCostCents: 0,
-    monthlySoftwareCostCents: 0,
-    setupHours: 0,
-    monthlyHours: 0,
-    labourRateCentsPerHour: 6000,
-    isPlaceholder: true,
-  },
-  {
-    tier: "growth",
-    name: "Growth",
-    description: "Website, CRM and core automations.",
-    setupPriceCents: 0,
-    monthlyPriceCents: 0,
-    setupSoftwareCostCents: 0,
-    monthlySoftwareCostCents: 0,
-    setupHours: 0,
-    monthlyHours: 0,
-    labourRateCentsPerHour: 6000,
-    isPlaceholder: true,
-  },
-  {
-    tier: "partner",
-    name: "Partner",
-    description: "Full stack plus ongoing optimisation and reporting.",
-    setupPriceCents: 0,
-    monthlyPriceCents: 0,
-    setupSoftwareCostCents: 0,
-    monthlySoftwareCostCents: 0,
-    setupHours: 0,
-    monthlyHours: 0,
-    labourRateCentsPerHour: 6000,
-    isPlaceholder: true,
-  },
-];
 
 export async function getSettings(user: User): Promise<UserSettings> {
   const supabase = await createClient();
@@ -101,7 +60,7 @@ export async function getSettings(user: User): Promise<UserSettings> {
         .from("pricing_packages")
         .select("*")
         .eq("user_id", user.id)
-        .order("tier"),
+        .order("setup_price_cents"),
     ]);
 
     const failure = [profileResult, settingsResult, packagesResult].find((r) => r.error)
@@ -155,38 +114,53 @@ async function ensureBootstrapped(
     { onConflict: "user_id", ignoreDuplicates: true },
   );
 
+  // Seeded with Ascend's real prices. `ignoreDuplicates` makes this a no-op on
+  // every call after the first, so editing a package here is never overwritten
+  // by a later page load.
   await supabase.from("pricing_packages").upsert(
-    PLACEHOLDER_PACKAGES.map((p) => ({
+    PACKAGE_SEEDS.map((p) => ({
       user_id: user.id,
       tier: p.tier,
       name: p.name,
       description: p.description,
       setup_price_cents: p.setupPriceCents,
       monthly_price_cents: p.monthlyPriceCents,
+      is_from_pricing: p.isFromPricing,
       setup_software_cost_cents: p.setupSoftwareCostCents,
       monthly_software_cost_cents: p.monthlySoftwareCostCents,
       setup_hours: p.setupHours,
       monthly_hours: p.monthlyHours,
       labour_rate_cents_per_hour: p.labourRateCentsPerHour,
-      is_placeholder: true,
+      usage_billing: p.usageBilling,
+      estimated_monthly_usage_cost_cents: p.estimatedMonthlyUsageCostCents,
+      usage_allowance_cents: p.usageAllowanceCents,
+      // The prices are real, so these are not placeholders — but the hours and
+      // labour rate are unreviewed estimates until delivery data exists.
+      is_placeholder: false,
+      assumptions_reviewed: false,
     })),
     { onConflict: "user_id,tier", ignoreDuplicates: true },
   );
 }
 
 function toPackageRow(row: unknown): PackageRow {
-  const r = row as Record<string, never> & {
+  const r = row as {
     id: string;
-    tier: PackageTier;
+    tier: ServicePackage["tier"];
     name: string;
     description: string | null;
     setup_price_cents: number;
     monthly_price_cents: number;
+    is_from_pricing: boolean;
     setup_software_cost_cents: number;
     monthly_software_cost_cents: number;
     setup_hours: number;
     monthly_hours: number;
     labour_rate_cents_per_hour: number;
+    usage_billing: ServicePackage["usageBilling"];
+    estimated_monthly_usage_cost_cents: number;
+    usage_allowance_cents: number;
+    assumptions_reviewed: boolean;
     is_placeholder: boolean;
   };
 
@@ -197,11 +171,16 @@ function toPackageRow(row: unknown): PackageRow {
     description: r.description,
     setupPriceCents: r.setup_price_cents,
     monthlyPriceCents: r.monthly_price_cents,
+    isFromPricing: r.is_from_pricing,
     setupSoftwareCostCents: r.setup_software_cost_cents,
     monthlySoftwareCostCents: r.monthly_software_cost_cents,
     setupHours: r.setup_hours,
     monthlyHours: r.monthly_hours,
     labourRateCentsPerHour: r.labour_rate_cents_per_hour,
+    usageBilling: r.usage_billing,
+    estimatedMonthlyUsageCostCents: r.estimated_monthly_usage_cost_cents,
+    usageAllowanceCents: r.usage_allowance_cents,
+    assumptionsReviewed: r.assumptions_reviewed,
     isPlaceholder: r.is_placeholder,
   };
 }

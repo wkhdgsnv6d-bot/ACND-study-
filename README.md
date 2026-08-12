@@ -36,9 +36,14 @@ audited to WCAG 2.1 AA with zero axe violations across every surface in both
 themes, and carries an AI study assistant that teaches rather than answers —
 degrading to an explanatory card when `ANTHROPIC_API_KEY` is absent.
 
-**Phase 8 — the curriculum itself — is in progress.** Only lessons marked
-`status: complete` count toward anything; `npm run content:check` prints exactly
-how much of each term is written. Module exams remain deferred. See
+**Phase 8 — the curriculum itself — is in progress.** Two Term 1 modules are
+written in full: **APIs & Webhooks** (8 lessons) and **Automation Foundations**
+(5 lessons) — about 12,300 words, which between them satisfy the lesson
+requirement for the Automation Builder certification. The remaining Term 1
+modules and Terms 2–4 are not written. Only lessons marked `status: complete`
+count toward anything, and `npm run content:check` prints exactly how much of
+each term exists, so the platform never overstates its own coverage. Module
+exams remain deferred. See
 [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for the full plan and the
 reasoning behind each decision.
 

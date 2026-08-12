@@ -388,7 +388,7 @@ Three modelling decisions are encoded rather than assumed:
 | 5 | Business Lab, Client Pipeline, Market Validation, Revenue/MRR | **Done** |
 | 6 | Software Library, Template Vault, Projects, Resources | **Done** |
 | 7 | Search, command palette, streaks, Today, Weekly Review, analytics, export | **Done** |
-| 8 | Curriculum content, module by module | In progress |
+| 8 | Curriculum content, module by module | In progress — 2 of ~40 modules written |
 | 9 | Security review, a11y, responsive, performance, deploy | **Done** |
 | 10 | AI Study Assistant wired to a real API | **Done** |
 

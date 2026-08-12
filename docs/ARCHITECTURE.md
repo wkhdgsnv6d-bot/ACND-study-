@@ -389,8 +389,8 @@ Three modelling decisions are encoded rather than assumed:
 | 6 | Software Library, Template Vault, Projects, Resources | **Done** |
 | 7 | Search, command palette, streaks, Today, Weekly Review, analytics, export | **Done** |
 | 8 | Curriculum content, module by module | In progress |
-| 9 | Security review, a11y, responsive, performance, deploy | |
-| 10 | AI Study Assistant wired to a real API | |
+| 9 | Security review, a11y, responsive, performance, deploy | **Done** |
+| 10 | AI Study Assistant wired to a real API | **Done** |
 
 Chosen sequencing: platform first (Phases 1–7), seeding real lessons per module
 as each system lands, then Phase 8 writes Term 1 in full, then Terms 2–4.

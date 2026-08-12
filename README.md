@@ -31,10 +31,14 @@ Validation and Revenue surfaces; the Software Library, Template Vault, Projects
 and Resources; and search with a ⌘K palette, the Today plan, Review sessions,
 Weekly Review, progress analytics and full data export.
 
+The platform is also security-reviewed (see [`docs/SECURITY.md`](docs/SECURITY.md)),
+audited to WCAG 2.1 AA with zero axe violations across every surface in both
+themes, and carries an AI study assistant that teaches rather than answers —
+degrading to an explanatory card when `ANTHROPIC_API_KEY` is absent.
+
 **Phase 8 — the curriculum itself — is in progress.** Only lessons marked
 `status: complete` count toward anything; `npm run content:check` prints exactly
-how much of each term is written. Module exams are deferred, and the AI Study
-Assistant (Phase 10) is not built. See
+how much of each term is written. Module exams remain deferred. See
 [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for the full plan and the
 reasoning behind each decision.
 
@@ -49,7 +53,8 @@ builds it, so the app always tells the truth about what exists.
 | Data | Supabase Postgres, RLS on all 27 tables |
 | Pricing | Ascend's real Essential / Growth / Partner figures, editable in Settings |
 | Auth | Supabase Auth, guarded in `src/proxy.ts` and re-checked server-side |
-| Tests | 223 passing across 10 suites |
+| Assistant | Claude (`claude-opus-5`), optional — absent key degrades to a card |
+| Tests | 349 passing across 14 suites |
 
 ---
 

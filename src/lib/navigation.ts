@@ -16,6 +16,7 @@ import {
   NotebookPen,
   Repeat2,
   Settings,
+  Sparkles,
   Users,
 } from "lucide-react";
 
@@ -46,7 +47,7 @@ export interface NavGroup {
 }
 
 /** Bumped as each phase lands. Everything at or below this is navigable. */
-export const CURRENT_PHASE: BuildPhase = 7;
+export const CURRENT_PHASE: BuildPhase = 10;
 
 export const NAV_GROUPS: NavGroup[] = [
   {
@@ -174,6 +175,12 @@ export const NAV_GROUPS: NavGroup[] = [
   {
     label: null,
     items: [
+      {
+        label: "Assistant",
+        href: "/assistant",
+        icon: Sparkles,
+        phase: 10,
+      },
       {
         label: "Weekly review",
         href: "/weekly",

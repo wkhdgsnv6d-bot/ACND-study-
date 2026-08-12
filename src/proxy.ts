@@ -132,6 +132,17 @@ export async function proxy(request: NextRequest) {
   } = await supabase.auth.getUser();
 
   if (!user && !isPublicPath(pathname)) {
+    /*
+     * Route handlers get a status code, not a redirect. A `fetch` that asked
+     * for JSON and received a 307 to an HTML login page fails somewhere far
+     * from the cause; 401 says what actually happened.
+     */
+    if (pathname.startsWith("/api/")) {
+      return harden(
+        NextResponse.json({ error: "Not authenticated" }, { status: 401 }),
+      );
+    }
+
     const url = request.nextUrl.clone();
     url.pathname = "/login";
     url.search = "";

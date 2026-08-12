@@ -11,6 +11,7 @@ import {
   Target,
 } from "lucide-react";
 
+import { AssistantPanel } from "@/components/assistant/assistant-panel";
 import { Card, CardBody, CardHeader } from "@/components/common/card";
 import { ErrorState } from "@/components/common/states";
 import { StatusPill } from "@/components/common/status-pill";
@@ -25,6 +26,7 @@ import {
   loadCurriculum,
 } from "@/lib/content/loader";
 import { SKILLS } from "@/lib/domain/skills";
+import { isAssistantConfigured } from "@/lib/env";
 import { getLessonPageData } from "@/lib/queries/course";
 import { toClientQuestions } from "@/lib/quiz";
 import { getCurrentUser } from "@/lib/supabase/server";
@@ -343,6 +345,12 @@ export default async function LessonPage(
           ) : null}
 
           <NotesPanel lessonPath={lesson.path} revalidate={href} notes={data.notes} />
+
+          <AssistantPanel
+            configured={isAssistantConfigured()}
+            lessonPath={lesson.path}
+            lessonTitle={fm.title}
+          />
 
           {fm.resources.length > 0 ? (
             <Card>

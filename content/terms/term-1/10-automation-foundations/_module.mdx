@@ -1,0 +1,69 @@
+---
+title: "Automation Foundations"
+summary: "Turning the API skills of the previous module into workflows that run unattended on someone else's business. Designing before building, moving data between systems that disagree about its shape, and making failure visible instead of silent."
+status: complete
+objectives:
+  - "Describe an automation as a trigger, a sequence of actions and the data that moves between them"
+  - "Design a workflow on paper — including its failure paths — before opening a tool"
+  - "Map data between two systems that disagree about field names, types and structure"
+  - "Choose the right trigger mechanism for a requirement and justify the cost"
+  - "Build error handling that keeps good records moving while surfacing the bad ones"
+  - "Test an automation against the cases that break it, not only the case it was built for"
+  - "Hand over an automation the client can operate without you"
+prerequisites:
+  - "term-1/apis-and-webhooks"
+skills:
+  - automation
+  - api
+  - operations
+software:
+  - n8n
+  - postman
+exam:
+  title: "Automation Foundations — Module Exam"
+  passMark: 80
+  questionCount: 20
+  timeLimitMinutes: 45
+---
+
+The previous module taught you to talk to one system. This one is about wiring
+several together and walking away.
+
+That last part is the whole difficulty. An automation you are watching is a
+script. An automation running unattended on a client's business, at 3am, on
+data you have never seen, is a different object — and the difference is almost
+entirely about what happens when something goes wrong.
+
+## Why design comes before tools
+
+It is tempting to open n8n and start dragging nodes. You will have something
+moving data within the hour, and it will feel like progress.
+
+The trouble arrives later, and always in the same shape: nobody decided what
+should happen when the third system is down, so the workflow does whatever the
+platform's default happens to be. Nobody decided whether a duplicate is
+possible, so it is. Nobody decided who finds out about failures, so nobody
+does.
+
+None of those are tool problems, and none of them are visible while the happy
+path works. They are design decisions, and they are cheapest to make on paper.
+
+## The unglamorous middle
+
+Most of the real work in automation is not the trigger and not the action. It
+is the bit in between: one system calls it `first_name`, the other wants
+`firstName`; one sends `"2026-08-11"`, the other demands an ISO timestamp with
+a timezone; one sends money as `19.99` and the other as `1999` cents.
+
+That translation layer is where automations actually break, and it is the part
+tutorials skip because it is specific and boring. This module does not skip it.
+
+## Concepts before vendors
+
+As throughout the program: the concepts here are platform-independent.
+Triggers, idempotency, retries, dead letters and reconciliation exist whether
+you build in n8n, Make, Zapier, or a hundred lines of code you wrote yourself.
+
+n8n is used for examples because it is the tool Ascend runs on and because its
+node model makes the data flow visible. But if the tool disappeared tomorrow,
+everything in this module would still be true.

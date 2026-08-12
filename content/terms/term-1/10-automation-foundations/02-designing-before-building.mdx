@@ -1,0 +1,249 @@
+---
+title: "Designing Before You Build"
+summary: "The half-hour on paper that saves the fortnight — mapping a workflow's steps, its data and its failure paths before opening a tool, and writing the one-page design a client can actually approve."
+duration: 35
+difficulty: foundation
+status: complete
+lastReviewed: "2026-08-12"
+objectives:
+  - "Produce a written workflow design before opening an automation tool"
+  - "Identify every step that can fail, and decide what happens at each"
+  - "Specify the data contract between systems before building the mapping"
+  - "Write a design a non-technical client can approve or correct"
+prerequisites:
+  - "term-1/automation-foundations/what-an-automation-actually-is"
+xp: 15
+skillXp:
+  automation: 35
+  operations: 30
+terminology:
+  - term: "Data contract"
+    definition: "The agreed shape of data moving between two systems — field names, types, formats and which are required."
+  - term: "Failure path"
+    definition: "What the workflow does when a given step does not succeed. Distinct from the happy path, and usually undecided."
+  - term: "Blast radius"
+    definition: "How much damage a failure at a given step can do before anything stops it."
+  - term: "Source of truth"
+    definition: "The system whose version of a record wins when two systems disagree."
+  - term: "Manual fallback"
+    definition: "The documented thing a human does when the automation cannot complete, so work is not simply lost."
+commonMistakes:
+  - mistake: "Designing only the happy path."
+    correction: "For each step, write what happens when it fails. That list is the design."
+    why: "The happy path is what the client described and what the demo shows, so it is the only path anyone has in mind until production supplies the others."
+  - mistake: "Deciding the source of truth implicitly, by build order."
+    correction: "State which system wins on a conflict, before building, and get the client to agree."
+    why: "Two-way syncs feel symmetrical, so the question never gets asked — until both sides change the same record and one silently overwrites the other."
+  - mistake: "Presenting a design as a node diagram."
+    correction: "Write it in sentences the client can check. They cannot correct a diagram of a tool they do not use."
+    why: "The diagram is what you are actually building, so it feels like the honest artefact — but approval of something unreadable is not approval."
+  - mistake: "Skipping design because the workflow is small."
+    correction: "Small workflows fail the same ways. The design just takes ten minutes instead of an hour."
+    why: "Three steps genuinely does look self-evident, and the failure paths are identical to those of thirty."
+securityNote: "Design is when you decide what the automation is allowed to touch. Write down which systems it can write to and which it may only read, then request credentials scoped to exactly that. Deciding scope at build time means requesting whatever makes the current step work, which is how integrations end up with write access to systems they only ever read."
+reviewConcepts:
+  - key: design-first
+    prompt: "Why design a workflow on paper before opening the tool, and what does the design contain?"
+    answer: "Because the decisions that make an automation survive production — what happens when each step fails, which system wins a conflict, who finds out about problems — are invisible while the happy path works, and they are cheapest to make before anything is built. The design contains the trigger, the steps in order, the data contract between systems, a failure decision for every step, the source of truth, who is notified, and the manual fallback. It should be a page of sentences, not a diagram."
+  - key: failure-path-table
+    prompt: "How do you systematically find a workflow's failure paths?"
+    answer: "Take each step in turn and ask what happens when it does not succeed, and separately what happens if it half-succeeds — the request that timed out after the server processed it. For each, decide retry, skip, or stop, and where the record goes if it is not processed. Doing this per-step rather than in general is what makes it exhaustive, and the resulting table is the most valuable page of the design because it is the part that determines behaviour at 3am."
+  - key: source-of-truth
+    prompt: "What is a source of truth, and why must it be decided before building a sync?"
+    answer: "It is the system whose version of a record wins when two systems disagree about it. It must be decided first because a two-way sync without one will eventually have both sides change the same record, and whichever write lands second silently destroys the other — with no error and no record of what was lost. Deciding it is a business question, not a technical one, so the client has to answer it: which system do your people actually trust."
+quiz:
+  - id: missing-failure-path
+    type: debugging
+    prompt: "A workflow does: receive booking webhook → create CRM contact → create deal → send confirmation email. It has been live a week and a client reports some customers got two confirmation emails. Which design decision was missed?"
+    reviewConcept: failure-path-table
+    options:
+      - text: "What happens when a step half-succeeds — the webhook was retried after a slow response, and the whole sequence ran twice."
+        correct: true
+        why: "Correct. Nobody decided what a duplicate delivery should do, so the workflow does what it always does: the whole sequence, again. The design needed an idempotency decision at the trigger, keyed on the booking id."
+      - text: "What happens when the email service is down."
+        correct: false
+        why: "A real gap worth deciding, but it produces missing emails rather than duplicate ones. The symptom points at the run happening twice, not at the email step failing."
+      - text: "Which system is the source of truth."
+        correct: false
+        why: "That matters for two-way syncs. This is one-directional, so nothing is contending over the same record."
+      - text: "Who gets notified when the workflow fails."
+        correct: false
+        why: "Also missing from most designs, and also not this. Nothing failed here — everything succeeded, twice."
+  - id: source-of-truth-question
+    type: client-simulation
+    prompt: "A client wants their CRM and their booking system kept in sync 'both ways'. What do you ask before agreeing?"
+    reviewConcept: source-of-truth
+    rubric:
+      - "Asks which system wins when both change the same record"
+      - "Explains the consequence of not deciding, in plain terms"
+      - "Offers a concrete alternative such as field-level ownership or one-way sync"
+      - "Frames it as a business decision for them, not a technical preference"
+    modelAnswer: "Before I build that, I need you to decide something that sounds small and is not: if someone changes a customer's phone number in the CRM and someone else changes it in the booking system on the same afternoon, which one is right? Whatever I build has to pick a winner, and if we do not decide now, the winner is just whichever happened to save last — the other change disappears with no error and no record of it. In practice there are three sensible answers. One system owns everything and the other follows, which is simplest. Or each system owns particular fields — bookings own appointment times, the CRM owns contact details — which usually matches how people actually work. Or every conflict goes to a human, which is safest and only workable at low volume. This is your call rather than mine, because it depends on which system your team actually trusts. Whichever you pick, I will write it down so the next person to touch this knows the rule."
+    points: 5
+  - id: design-readability
+    type: multiple-choice
+    prompt: "You have designed a nine-step workflow. What do you send the client for approval?"
+    reviewConcept: design-first
+    options:
+      - text: "A page of plain sentences: what starts it, what it does, what happens when each part fails, and what they need to do."
+        correct: true
+        why: "Correct. The client can only approve what they can check, and what they need to check is the behaviour — especially the failure behaviour, since that is where their expectations and your build diverge."
+      - text: "A screenshot of the node graph from the automation platform."
+        correct: false
+        why: "It shows what you are building and communicates nothing to someone who does not use the tool. Approval of something unreadable is not approval, and you will both discover that during the first incident."
+      - text: "The data mapping table, since that is where the detail is."
+        correct: false
+        why: "Send it as an appendix. Field-level mapping matters enormously to the build and is not the thing a business owner is equipped to approve."
+      - text: "Nothing — show them the working automation, which is easier to react to."
+        correct: false
+        why: "Reacting to a finished build means changes are expensive. The point of the design step is that corrections cost minutes at this stage and days later."
+practicalTask:
+  title: "Write a one-page workflow design"
+  brief: "Take an automation you intend to build — the practical from the previous lesson works well. Produce a one-page design before opening any tool. It must contain: the trigger and why that type; every step in order; the data contract between each pair of systems, with real field names and formats; a failure decision for every single step; the source of truth if anything is bidirectional; who is notified and how; and the manual fallback when the automation cannot complete. Then write a short version — four to six sentences — that a non-technical client could approve or correct."
+  estimatedMinutes: 75
+  rubric:
+    - "Names the trigger type and justifies the choice"
+    - "Lists every step in order, with the data entering and leaving each"
+    - "Specifies field names, types and formats for at least one system boundary"
+    - "Gives a failure decision for every step — not a general statement about retries"
+    - "States the source of truth, or states explicitly that nothing is bidirectional"
+    - "Names who is notified, through what channel, and how quickly"
+    - "Includes a client-readable version in plain language"
+  evidence:
+    - written
+  xp: 120
+  skillXp:
+    automation: 50
+    operations: 35
+software:
+  - n8n
+resources:
+  - label: "n8n — Error handling in workflows"
+    url: "https://docs.n8n.io/flow-logic/error-handling/"
+    type: docs
+    note: "Read after you have written a failure-path table, so you can see which of your decisions the platform supports directly and which you have to construct."
+---
+
+The difference between an automation that survives a year and one that quietly
+breaks in month two is decided before anything is built.
+
+Not because design produces a better workflow — because it is the only point at
+which the failure questions get asked at all.
+
+## Why the happy path is not the design
+
+Open a tool and start building, and you will build the path where everything
+works. It is the path the client described, the one the demo shows, and the one
+you can hold in your head.
+
+Then production supplies the others: the API is down; the payload has a field
+you have never seen; the same event arrives twice; a required field is empty;
+the client's ops manager pastes a phone number with spaces in it.
+
+The workflow does *something* in each of those cases. It does whatever the
+platform's default is — which is usually "stop and go red", or worse,
+"continue with empty data". Nobody chose that behaviour. It was assigned by
+omission.
+
+**Design is the act of choosing it deliberately.**
+
+## The one page
+
+Seven things. On a small workflow it takes ten minutes.
+
+**1. The trigger**, and which of the four types it is. Note the latency this
+gives you, because that is what the client will actually experience.
+
+**2. The steps, in order.** Plain sentences. "Look up the contact by email.
+If none exists, create one. Create a deal linked to it."
+
+**3. The data contract at each boundary.** The real field names, types and
+formats on both sides. This is the least glamorous part of the design and the
+part that saves the most time, because it forces you to look at real payloads
+before you build against imagined ones.
+
+**4. A failure decision for every step.** Covered below. This is the page that
+matters.
+
+**5. The source of truth**, if anything is bidirectional.
+
+**6. Who finds out, and how.** A name, a channel, a timeframe. "Nobody" is a
+valid answer for something low-stakes, as long as it was chosen.
+
+**7. The manual fallback.** When the automation cannot complete, what does a
+human do? If the answer is "nothing, the work is lost", say so explicitly — the
+client may accept that, and they may not.
+
+## The failure table
+
+Go step by step. For each one, two questions:
+
+- What happens if this **fails**?
+- What happens if this **half-succeeds** — the request that timed out after the
+  server had already processed it?
+
+Then decide: **retry**, **skip**, or **stop**. And: where does the record go if
+it is not processed?
+
+| Step | Fails | Half-succeeds | Decision |
+|---|---|---|---|
+| Receive webhook | Vendor retries | Same event twice | Idempotent on booking id |
+| Look up contact | API down | — | Retry 3× with backoff, then dead-letter |
+| Create contact | Validation error | Contact created, response lost | Look up before create; retry safe |
+| Create deal | API down | Deal created, response lost | Idempotent on booking id; retry |
+| Send email | Provider down | Email sent, response lost | Retry once; log and continue |
+
+That table is the design. Everything above it is context.
+
+Notice that filling it in forces the idempotency question at every step — which
+is the question the previous module spent three lessons on, arriving here as a
+row in a table.
+
+## Source of truth
+
+Any time data flows both ways, one question has to be answered before you
+build: **when both systems change the same record, which wins?**
+
+Without an answer, the winner is whichever write happened to land second. The
+other change disappears — no error, no log, no way to know it happened.
+
+There are three workable answers:
+
+- **One system owns everything**, the other follows. Simplest, and usually
+  right.
+- **Field-level ownership.** Bookings own appointment times; the CRM owns
+  contact details. Matches how people actually work, and is more to build.
+- **Conflicts go to a human.** Safest, and only viable at low volume.
+
+This is a business decision, not a technical one, so the client answers it. Your
+job is to make sure they are asked — and to write the answer down where the
+next person will find it.
+
+## Writing it for the client
+
+The design has two audiences and they need different documents.
+
+**For you**: the full page, with field names and the failure table.
+
+**For the client**: four to six sentences, no jargon.
+
+> When a booking comes in through the website, the system creates the customer
+> in your CRM and adds the booking as a deal, then messages the team channel.
+> It usually happens within about ten seconds. If your CRM is unavailable, it
+> tries again for a few minutes; if it still cannot get through, the booking
+> goes into a holding list and you get an email — nothing is lost. Duplicate
+> bookings are ignored, so a customer clicking twice cannot create two records.
+> The only thing needing you is the holding list, which should normally be
+> empty.
+
+A client can read that and say "actually, if the CRM is down I want a text, not
+an email". That correction costs a minute now and a rebuild later.
+
+They cannot say that about a node diagram.
+
+## What to take away
+
+Design is not documentation of what you will build. It is the point at which
+the failure behaviour, the conflict rules and the notification path get decided
+by someone rather than assigned by default. Write the failure table, decide the
+source of truth, and send the client sentences they can argue with.

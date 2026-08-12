@@ -1,0 +1,325 @@
+---
+title: "Data Transformation and Mapping"
+summary: "The unglamorous middle of every integration — reshaping data between systems that disagree about field names, types, dates, money and what counts as empty, and doing it so the failures are loud rather than silent."
+duration: 40
+difficulty: intermediate
+status: complete
+lastReviewed: "2026-08-12"
+objectives:
+  - "Map fields between two systems with different names, types and structures"
+  - "Handle dates, money and phone numbers without corrupting them"
+  - "Distinguish missing, empty and null, and decide what each should mean"
+  - "Flatten and reshape nested data reliably"
+  - "Validate before sending, so bad data fails loudly at the boundary"
+prerequisites:
+  - "term-1/automation-foundations/designing-before-building"
+xp: 20
+skillXp:
+  automation: 40
+  api: 30
+terminology:
+  - term: "Mapping"
+    definition: "The correspondence between fields in one system and fields in another."
+  - term: "Transformation"
+    definition: "Changing a value's format or type so the destination will accept it — a date reformatted, a name split, currency converted from dollars to cents."
+  - term: "Coercion"
+    definition: "A language or platform silently converting a value's type, such as the string \"5\" becoming the number 5."
+  - term: "Truthy and falsy"
+    definition: "Values a language treats as true or false in a condition. Zero and the empty string are falsy in most languages, which is a frequent source of bugs."
+  - term: "E.164"
+    definition: "The international standard phone number format — a plus sign, country code and digits, no spaces or punctuation."
+  - term: "Minor units"
+    definition: "The smallest denomination of a currency — cents for dollars — used to store money as an integer and avoid floating-point error."
+commonMistakes:
+  - mistake: "Storing money as a decimal number."
+    correction: "Store minor units as an integer. Convert only for display."
+    why: "Decimals are how people write money, so they look like the natural representation — and binary floating point cannot represent 0.1 exactly, so the error only appears after enough arithmetic to be hard to trace."
+  - mistake: "Treating empty string, null and missing as the same thing."
+    correction: "Decide what each means for each field, and handle them separately."
+    why: "Most platforms make all three falsy, so one condition appears to catch all of them — until 'field absent because the API changed' is handled as 'user left it blank'."
+  - mistake: "Splitting a full name on the first space."
+    correction: "Avoid splitting names. If forced, split on the last space and expect to be wrong."
+    why: "It works on every name in the test data, because test data is invented by someone with a two-part name."
+  - mistake: "Passing dates through as strings without checking the format."
+    correction: "Parse to a known representation, then format for the destination. Always know the timezone."
+    why: "Two systems can both use ISO-looking strings and still disagree about timezone, and the corruption is an offset of a few hours rather than an error."
+securityNote: "Data arriving from a form or a webhook is untrusted input, and transformation is where it enters your systems. Validate types and lengths before writing anywhere, never build a query or a command by concatenating a value you received, and be careful passing values into anything that interprets them — a spreadsheet cell beginning with an equals sign is a formula, which is how CSV exports become an attack on whoever opens them."
+reviewConcepts:
+  - key: money-representation
+    prompt: "How should money move through an integration, and why?"
+    answer: "As an integer in minor units — cents — with the currency carried alongside it, converted to a decimal only for display. Binary floating point cannot represent values like 0.1 exactly, so decimal arithmetic accumulates error that shows up as an invoice that is a cent out and no obvious cause. Integers are exact. The other half is never assuming currency: a bare number with no currency code is a bug waiting for the client's first international customer."
+  - key: empty-null-missing
+    prompt: "What is the difference between missing, null and empty string, and why does it matter?"
+    answer: "Missing means the field was not in the payload at all — often because the API changed or the object type differs. Null means present and explicitly set to nothing. Empty string means present and set to a value that happens to be empty, usually a person leaving a form field blank. They mean different things and most platforms treat all three as falsy, so a single check collapses them. That is how 'the API stopped sending this field' gets silently handled as 'the customer did not fill it in'."
+  - key: validate-at-boundary
+    prompt: "Why validate before sending rather than relying on the destination to reject bad data?"
+    answer: "Because the destination's rejection arrives as a generic error deep inside a run, often after other steps have already written data — so you get partial state and an error that does not say which field was wrong. Validating at the boundary means the failure names the field, happens before anything has been changed, and can route the record to a dead-letter store with a readable reason. It also means you can tell the difference between 'this record is bad' and 'the destination is down', which need completely different responses."
+quiz:
+  - id: money-bug
+    type: code-interpretation
+    prompt: "An invoice total is calculated by summing line items. Occasionally the total is out by a cent. Which line is the cause?"
+    reviewConcept: money-representation
+    code: |
+      const total = items.reduce((sum, item) => sum + item.price * item.qty, 0);
+      const formatted = total.toFixed(2);
+      await createInvoice({ amount: formatted });
+    codeLang: javascript
+    options:
+      - text: "Summing decimal prices — floating point cannot represent values like 0.1 exactly, so error accumulates across the items."
+        correct: true
+        why: "Correct. 0.1 + 0.2 is 0.30000000000000004 in binary floating point. With enough line items the drift crosses a rounding boundary and toFixed produces a total that is a cent off. Sum in cents as integers and divide only for display."
+      - text: "toFixed(2) rounds incorrectly."
+        correct: false
+        why: "toFixed does have rounding quirks, but it is displaying an already-wrong number here. Fixing the display would hide the error rather than remove it."
+      - text: "The quantity should be validated as an integer."
+        correct: false
+        why: "Worth doing for other reasons. Fractional quantities are legitimate in some businesses and are not what produces sub-cent drift."
+      - text: "createInvoice is being sent a string rather than a number."
+        correct: false
+        why: "Possibly a type mismatch to check against the API's contract, but the value is already wrong by the time it is formatted."
+  - id: null-vs-missing
+    type: debugging
+    prompt: "Your workflow sets a contact's company to \"Unknown\" when the form field is blank. After an API change, every contact — including ones with a company — is being set to \"Unknown\". What happened?"
+    reviewConcept: empty-null-missing
+    code: |
+      const company = payload.company || "Unknown";
+    codeLang: javascript
+    options:
+      - text: "The field moved — it is now nested, so payload.company is undefined for every record and the fallback always fires."
+        correct: true
+        why: "Correct. The || operator cannot distinguish 'absent' from 'blank', so a structural change to the payload is silently handled as 'the user left it empty'. Checking for undefined separately would have failed loudly instead."
+      - text: "The API is now sending empty strings instead of null."
+        correct: false
+        why: "Both are falsy, so this code would behave identically. It would not change anything for records that do have a company."
+      - text: "The fallback value is wrong."
+        correct: false
+        why: "The fallback is doing what it was told. The problem is that the condition triggering it is now true for every record."
+      - text: "The form stopped sending the company field."
+        correct: false
+        why: "Then contacts genuinely have no company and 'Unknown' would be right. The clue is that contacts which do have one are also affected."
+  - id: date-timezone
+    type: scenario
+    prompt: "A booking system sends `\"starts_at\": \"2026-09-01 09:30:00\"`. The CRM expects an ISO 8601 timestamp. What do you need to establish first?"
+    reviewConcept: validate-at-boundary
+    options:
+      - text: "What timezone that value is in — the string carries no offset, so converting it without knowing is a guess."
+        correct: true
+        why: "Correct, and it is the most common quiet corruption in integrations. Assume UTC when it is local time and every booking shifts by hours — appearing plausible, arriving wrong, and only noticed when a customer turns up at the wrong hour."
+      - text: "Whether the CRM wants seconds or milliseconds."
+        correct: false
+        why: "A real detail for epoch timestamps, and not the issue for an ISO string."
+      - text: "Whether the space should be a T."
+        correct: false
+        why: "A formatting fix, and the easy part. It does not tell you what moment in time the value refers to."
+      - text: "Whether the CRM validates the format."
+        correct: false
+        why: "Useful to know, but a CRM validating the format will happily accept a correctly formatted timestamp that means the wrong moment."
+  - id: validation-placement
+    type: architecture
+    prompt: "Where should validation of an incoming payload happen?"
+    reviewConcept: validate-at-boundary
+    options:
+      - text: "Immediately after receipt, before any step that writes anywhere."
+        correct: true
+        why: "Correct. Validating first means a bad record fails with a message naming the field, before anything has been changed, so there is no partial state to unpick and the record can be dead-lettered with a readable reason."
+      - text: "At each destination, letting the receiving API reject what it does not like."
+        correct: false
+        why: "By then you may have written to two other systems, and the error you get is generic. You also cannot tell 'this record is bad' from 'the destination is down' — which need opposite responses."
+      - text: "Only on fields you transform, since untouched fields pass through unchanged."
+        correct: false
+        why: "Pass-through fields are exactly where surprises live, because nobody looked at them. A required field arriving empty breaks the destination whether or not you touched it."
+      - text: "In a nightly job that reports records which failed."
+        correct: false
+        why: "Useful as reconciliation and far too late as validation — the bad data is already in the client's systems and has been for hours."
+practicalTask:
+  title: "Build and break a real mapping"
+  brief: "Take two real systems with different data shapes — a form builder and a CRM works well, and free tiers are fine. Capture a real payload from the source. Write the full field mapping: every source field, its type and format, the destination field, and the transformation required. Then build it. Then deliberately break it with at least five awkward inputs: a name with no space, a name with three parts, an empty optional field, a missing field, a phone number with spaces and brackets, and a date at the start or end of a month in a different timezone. Document what happened in each case and what you changed."
+  estimatedMinutes: 120
+  rubric:
+    - "Includes a real captured payload, not an invented one"
+    - "Maps every source field with its type and format, including ones deliberately dropped"
+    - "States the transformation for each field that needs one"
+    - "Tests at least five awkward inputs and reports what actually happened for each"
+    - "Distinguishes missing, null and empty for at least one field and says what each means"
+    - "Ends with the validation added at the boundary as a result of what broke"
+  evidence:
+    - written
+    - screenshot
+  xp: 150
+  skillXp:
+    automation: 55
+    api: 40
+labs:
+  - map-json-payload
+software:
+  - n8n
+  - postman
+resources:
+  - label: "Falsehoods programmers believe about names"
+    url: "https://www.kalzumeus.com/2010/06/17/falsehoods-programmers-believe-about-names/"
+    type: article
+    note: "Read it once, early. It will change how you build every form and every mapping thereafter."
+  - label: "E.164 phone number format"
+    url: "https://en.wikipedia.org/wiki/E.164"
+    type: spec
+    note: "The format most APIs want. Normalise to it at the boundary and stop thinking about phone numbers."
+---
+
+The trigger is a node. The destination is a node. The work is in between, and
+it is where integrations actually break.
+
+This lesson is the boring one that saves the most time.
+
+## Field names are the easy part
+
+`first_name` to `firstName` is trivial. Every platform has a mapping interface
+for it.
+
+The problems are types, formats, and the difference between empty and absent.
+
+## Money
+
+Store money as an **integer in minor units** — cents — and convert only for
+display.
+
+```
+$19.99  →  1999
+```
+
+The reason is that binary floating point cannot represent `0.1` exactly. Sum
+enough decimal line items and the total drifts by a fraction of a cent, which
+eventually crosses a rounding boundary and produces an invoice a cent out. There
+is no error and no obvious cause — just a number that is wrong and a client who
+noticed.
+
+Integers are exact. Do all arithmetic in cents and divide by 100 at the last
+moment.
+
+The other half: **always carry the currency.** A bare number is a bug waiting
+for the client's first international customer.
+
+## Dates
+
+Two systems can both use ISO-looking strings and still disagree.
+
+```
+"2026-09-01 09:30:00"       ← no timezone. What moment is this?
+"2026-09-01T09:30:00Z"      ← UTC. Unambiguous.
+"2026-09-01T09:30:00+10:00" ← Brisbane. Unambiguous.
+"01/09/2026"                ← 1 September or 9 January?
+```
+
+The first is the dangerous one, because it looks fine. Treat it as UTC when it
+is actually local time and every booking shifts by hours — still plausible,
+completely wrong, and discovered when a customer arrives at the wrong hour.
+
+The rule: **parse to a known representation, then format for the destination,
+and always know the timezone.** If the source does not tell you, find out from
+the vendor rather than assuming. "Probably UTC" is not an answer you want to
+have given.
+
+## Names
+
+Do not split names on the first space.
+
+```
+"Mary Jane Watson"  →  first: "Mary", last: "Jane Watson"
+"van der Berg"      →  breaks
+"Prince"            →  breaks
+"李 明"              →  family name first
+```
+
+If the destination demands separate fields and the source gives you one, split
+on the **last** space, accept that you will be wrong sometimes, and never make
+the split irreversible — keep the original string somewhere.
+
+Better: change the form to collect the fields the destination needs. Fixing the
+source is often cheaper than transforming forever.
+
+## Phones
+
+Normalise to **E.164** at the boundary and stop thinking about it:
+
+```
+"(04) 1234 5678"    →  "+61412345678"
+"0412 345 678"      →  "+61412345678"
+"+61 412 345 678"   →  "+61412345678"
+```
+
+Strip everything that is not a digit or a leading plus, then apply the country
+code. You need to know the default country — ask, do not assume from the
+client's address.
+
+## Missing, null, and empty
+
+These are three different things and most platforms make all three falsy, so
+one check appears to catch them all.
+
+```json
+{ "company": "Acme" }   ← present, has a value
+{ "company": "" }       ← present, empty. User left the field blank.
+{ "company": null }     ← present, explicitly nothing.
+{ }                     ← absent. The API changed, or this object type differs.
+```
+
+That last case is the one that bites. This looks reasonable:
+
+```js
+const company = payload.company || "Unknown";
+```
+
+Then the API nests the field, `payload.company` is `undefined` for every
+record, and every contact — including ones with a real company — becomes
+"Unknown". Silently, at scale.
+
+**Decide what each state means, per field, and handle absence separately from
+emptiness.** Absence usually means something structural changed, which should be
+loud.
+
+The same trap catches zero and `false`: `quantity || 1` turns a legitimate zero
+into one.
+
+## Nested data
+
+Payloads are rarely flat:
+
+```json
+{
+  "customer": { "name": { "first": "Dana", "last": "Okonkwo" } },
+  "items": [ { "sku": "A1", "qty": 2 } ]
+}
+```
+
+Two things to decide. **How deep can you safely reach** — `customer.name.first`
+breaks if `name` is absent, so use whatever safe-navigation your platform
+offers. And **what happens with arrays**: one order with three items might
+become three CRM rows, or one row with a summary. That is a design decision, and
+it belongs in the design document rather than being discovered mid-build.
+
+## Validate at the boundary
+
+Validate **immediately after receipt, before anything writes anywhere.**
+
+Check: required fields present; types correct; formats valid; values within
+plausible ranges.
+
+If validation fails, the record goes to the dead-letter store with a message
+naming the field, and nothing has been written yet.
+
+The alternative — letting each destination reject what it dislikes — means you
+may already have written to two other systems, the error is generic, and you
+cannot distinguish "this record is bad" from "the destination is down". Those
+two need opposite responses: one should be dead-lettered, the other retried.
+
+Validation is also a security boundary. Data from a form or webhook is untrusted
+input. Check lengths and types before writing, never concatenate a received
+value into a query, and remember that a spreadsheet cell beginning with `=` is a
+formula — which is how a CSV export becomes an attack on whoever opens it.
+
+## What to take away
+
+Money in integer cents with a currency. Dates parsed with a known timezone.
+Names not split unless forced. Phones normalised once. Missing, null and empty
+treated as three different things. And validation at the boundary, before
+anything is written, so failures name the field instead of appearing three steps
+later as a generic error.

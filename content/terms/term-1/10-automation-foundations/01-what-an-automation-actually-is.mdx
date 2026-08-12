@@ -1,0 +1,233 @@
+---
+title: "What an Automation Actually Is"
+summary: "Trigger, actions, and the data that moves between them — the model that lets you describe any workflow on any platform, and the three questions that decide whether an automation is worth building at all."
+duration: 30
+difficulty: foundation
+status: complete
+lastReviewed: "2026-08-12"
+objectives:
+  - "Describe any automation as a trigger, a sequence of actions and a data flow"
+  - "Name the four trigger types and choose between them for a requirement"
+  - "Explain to a client what an automation can and cannot reliably do"
+  - "Decide whether a given manual process is worth automating"
+prerequisites:
+  - "term-1/apis-and-webhooks/webhooks-vs-polling"
+xp: 15
+skillXp:
+  automation: 35
+terminology:
+  - term: "Trigger"
+    definition: "The thing that starts a workflow run — an event arriving, a schedule firing, a manual click."
+  - term: "Action"
+    definition: "A single step that does something: fetch, transform, create, send."
+  - term: "Run"
+    definition: "One execution of a workflow, from trigger to final step, carrying one set of data."
+  - term: "Payload"
+    definition: "The data travelling through the workflow, changing shape as it passes each step."
+  - term: "Node"
+    definition: "A platform's name for one step in a workflow. Nodes are actions; the first is usually the trigger."
+  - term: "Happy path"
+    definition: "The run where everything works. Usually the only path built, and never the only path taken."
+commonMistakes:
+  - mistake: "Automating a process nobody has written down."
+    correction: "Document the manual process first. If it cannot be described, it cannot be automated."
+    why: "The person doing it can demonstrate it in two minutes, which feels like sufficient specification — until you discover the six exceptions they handle by instinct and never mentioned."
+  - mistake: "Automating something that happens twice a month."
+    correction: "Do the arithmetic on time saved against time spent, including maintenance."
+    why: "Automating is more interesting than the task, and the build time is felt once while the saving is imagined repeatedly."
+  - mistake: "Describing an automation to a client as 'it just syncs them'."
+    correction: "Say what triggers it, how quickly, and what happens when it fails."
+    why: "The short version is true and gets agreement quickly, which is exactly why the client's expectations end up set by what they assumed rather than what you built."
+securityNote: "An automation runs with your credentials and nobody watching. Before building one, ask what the worst thing it could do is if the data it receives is wrong or hostile — and if the answer involves money leaving, messages reaching customers, or records being deleted, put a human decision in front of that step. An automation that can email every contact in a CRM is one bad payload away from doing exactly that."
+reviewConcepts:
+  - key: automation-model
+    prompt: "Describe the general model of an automation, in terms that apply on any platform."
+    answer: "A trigger starts a run; a sequence of actions does work; and a payload of data travels between them, changing shape at each step. That is the whole model, and every platform is a different interface onto it. Thinking in these terms rather than in a vendor's node names means a workflow you designed can be rebuilt anywhere, and a tool you have never used is only unfamiliar in its buttons."
+  - key: trigger-types
+    prompt: "Name the four trigger types and when each is the right choice."
+    answer: "Event triggers — a webhook — fire when something happens, and are right for anything time-sensitive. Schedule triggers fire at a fixed interval, and are right for reconciliation, reporting and anything the source system cannot notify you about. Manual triggers are run by a person, and are right for occasional work where a human decides when. Chained triggers fire when another workflow finishes, and are right for splitting a large job into pieces that can be retried independently. The choice is mostly about latency versus cost, and about whether the source can tell you at all."
+  - key: worth-automating
+    prompt: "How do you decide whether a manual process is worth automating?"
+    answer: "Three questions. Is it repetitive and rule-based enough to describe fully — if the person doing it cannot write it down, the exceptions live in their head and will break the automation. Does the frequency justify the build plus maintenance, remembering the automation is a thing that then needs looking after forever. And is the cost of it going wrong acceptable when nobody is watching. A monthly task with subtle judgement calls and expensive failures is often better left manual, and saying so is worth more to a client than building it."
+quiz:
+  - id: model-transfer
+    type: scenario
+    prompt: "A client's existing automation was built in Zapier by a previous contractor and you are rebuilding it in n8n. What do you document first?"
+    reviewConcept: automation-model
+    options:
+      - text: "The trigger, the sequence of actions, and how the data changes shape between them."
+        correct: true
+        why: "Correct. That description is platform-independent, so it transfers to any tool. Documenting Zapier's node names captures the implementation you are replacing rather than the behaviour you must preserve."
+      - text: "Every Zapier node's configuration, screen by screen."
+        correct: false
+        why: "Useful as a reference and not a specification — it tells you what was configured but not what the business needs, and it makes you likely to reproduce mistakes faithfully."
+      - text: "The API credentials each step uses."
+        correct: false
+        why: "You will need them, but they are logistics rather than design. Capturing them first tends to mean nobody ever writes down what the workflow is for."
+      - text: "The client's reasons for leaving Zapier."
+        correct: false
+        why: "Worth a conversation — cost, limits, a step it could not do — but it does not tell you what to build."
+  - id: trigger-choice
+    type: architecture
+    prompt: "A client wants a weekly summary of new leads emailed to their sales manager on Monday mornings. What triggers it?"
+    reviewConcept: trigger-types
+    options:
+      - text: "A schedule trigger, running weekly on Monday morning."
+        correct: true
+        why: "Correct. The requirement is inherently time-based — there is no event called 'it is Monday'. A schedule is the only mechanism that matches, and it is cheap because it runs once a week."
+      - text: "A webhook on new lead creation, accumulating leads until Monday."
+        correct: false
+        why: "This makes the workflow responsible for storing state between runs for a week, which is far more complexity and more failure modes than simply querying the leads on Monday."
+      - text: "A manual trigger the sales manager clicks."
+        correct: false
+        why: "It defeats the purpose. The point of the summary is that it arrives without anyone remembering to ask for it."
+      - text: "A chained trigger after the nightly CRM sync."
+        correct: false
+        why: "This ties the report to an unrelated workflow's success. If the sync fails on Sunday night, the report silently does not go — a coupling nobody would choose deliberately."
+  - id: not-worth-it
+    type: client-simulation
+    prompt: "A client asks you to automate a task they do twice a month, which takes them fifteen minutes and involves judgement about which invoices to chase. Respond."
+    reviewConcept: worth-automating
+    rubric:
+      - "Does the arithmetic on time saved versus build and maintenance cost"
+      - "Identifies the judgement element as the real obstacle, not the frequency alone"
+      - "Offers a partial alternative rather than a flat refusal"
+      - "Is honest that turning down work is the recommendation"
+    modelAnswer: "Honestly, I do not think this one is worth automating, and I would rather tell you that than take the money. Six hours a year is the saving, and building it properly plus keeping it working would cost more than that in the first year alone — and it becomes another thing that can break at a bad moment. The bigger issue is the judgement: you are deciding which invoices to chase based on who the client is and what you know about their situation, and that is not a rule I can write down. If I automate it, either it chases people you would not have chased, or I build so many exceptions that you end up reviewing every one anyway. What I would suggest instead is automating the part that is genuinely mechanical — pull the overdue list, sort it, and drop it in front of you with the amounts and the days overdue already worked out. You still decide who gets chased, in maybe three minutes instead of fifteen, and there is nothing to go wrong unattended. If the volume grows to the point where you are doing this weekly, come back to me and we will look at it again."
+    points: 5
+practicalTask:
+  title: "Document a manual process end to end"
+  brief: "Find a repetitive process — in your own work, or one a business you know describes to you. Document it completely: what starts it, every step in order, what data moves and where it comes from, every exception the person handles without thinking about it, and what happens today when something goes wrong. Then make a recommendation: automate fully, automate partially, or leave manual — with the reasoning, including the arithmetic on time saved against build and maintenance cost."
+  estimatedMinutes: 60
+  rubric:
+    - "Identifies the trigger, the steps in order, and the data moving between them"
+    - "Lists at least three exceptions or edge cases the person handles by judgement"
+    - "States what happens today when the process fails or is skipped"
+    - "Gives a clear recommendation with arithmetic, not a general impression"
+    - "Names what would have to be true for the recommendation to change"
+  evidence:
+    - written
+  xp: 100
+  skillXp:
+    automation: 45
+    operations: 25
+software:
+  - n8n
+resources:
+  - label: "n8n — Workflow concepts"
+    url: "https://docs.n8n.io/workflows/"
+    type: docs
+    note: "Read it for the model — triggers, nodes, connections — rather than for the buttons."
+---
+
+Every automation, on every platform, is the same three things: something starts
+it, a sequence of steps does work, and data travels between them.
+
+Learn it in those terms and a tool you have never opened is only unfamiliar in
+its buttons.
+
+## The model
+
+**A trigger** starts a run.
+
+**Actions** do the work, in order. Fetch a record, reshape it, create something,
+send a message.
+
+**A payload** travels between them, changing shape at each step. What comes out
+of step three is what step four receives — and most debugging is discovering
+that what came out was not what you assumed.
+
+That is the whole model. Platforms differ in what they call the pieces — nodes,
+steps, blocks — and in how much they hide from you, but a workflow described as
+trigger-actions-data can be rebuilt anywhere.
+
+This matters commercially. If a client's automation lives only as a diagram of
+one vendor's nodes, they are locked to that vendor. If it is documented as a
+model, moving is a rebuild rather than a rescue.
+
+## The four triggers
+
+**Event triggers** fire when something happens elsewhere — a webhook arriving.
+Fast, cheap while idle, and dependent on the source system offering one.
+
+**Schedule triggers** fire at a fixed interval. Right for anything time-based
+rather than event-based: reports, reconciliation, digests, and anything where
+the source cannot notify you.
+
+**Manual triggers** are run by a person. Undervalued. Plenty of client work is
+"do this thing correctly, when I decide", and putting a human at the start
+removes a whole category of unattended-failure risk.
+
+**Chained triggers** fire when another workflow finishes. Useful for splitting a
+long job into pieces that can be retried independently — but each link couples
+two workflows, so a failure upstream silently stops everything downstream.
+
+Choosing is mostly two questions: *how quickly does this need to happen*, and
+*can the source system tell me at all*.
+
+## The three questions before you build
+
+Not every process should be automated, and knowing which is part of the job.
+
+### 1. Can it be fully described?
+
+If the person doing it cannot write down the rules, the rules are not rules —
+they are judgement, and judgement does not survive being automated. It comes
+out as either an automation that does the wrong thing confidently, or one so
+hedged with exceptions that a human reviews every run anyway.
+
+The test: ask them to write the process down. What comes back reveals the
+exceptions they handle by instinct and never thought to mention. Those
+exceptions are the actual specification.
+
+### 2. Does the frequency justify it?
+
+Do the arithmetic honestly, including maintenance:
+
+> 15 minutes, twice a month = 6 hours a year.
+> Building it properly: a day. Keeping it working: a few hours a year.
+
+That does not pay back in year one, and it adds one more thing that can break.
+Compare with:
+
+> 3 minutes, forty times a day = 130 hours a year.
+
+That is worth a week of work.
+
+The bias worth resisting: automating is more interesting than the task, and the
+build cost is felt once while the saving is imagined over and over.
+
+### 3. What happens when it goes wrong unattended?
+
+This is the question that separates a hobby automation from professional work.
+
+Your workflow runs at 3am on data you have never seen, with credentials that
+can change a real business's records. So: what is the worst thing it could do?
+
+If the answer involves money leaving, messages reaching customers, or records
+being deleted, then either a human approves that step, or you build the
+safeguards deliberately and tell the client they exist. An automation that can
+email every contact in a CRM is one malformed payload away from doing exactly
+that.
+
+## Talking to clients about it
+
+Clients hear "automated" and picture something that cannot fail. It is worth
+correcting gently, early, in four sentences:
+
+- **What starts it** — "when someone submits the booking form".
+- **How quickly** — "within about ten seconds".
+- **What it does** — "creates the contact and the deal, and messages the team".
+- **What happens when it fails** — "it retries three times, then puts it in a
+  list and emails you; nothing is lost".
+
+That fourth sentence is the one people skip, and it is the one that sets whether
+the client trusts you when something does fail. Which it will.
+
+## What to take away
+
+Trigger, actions, data. Four trigger types, chosen on latency and on whether
+the source can tell you. And three questions before building anything: can it be
+described, does the frequency justify it, and what happens when it goes wrong
+with nobody watching. Being willing to answer the third honestly — sometimes
+with "do not automate this" — is what makes you worth hiring.

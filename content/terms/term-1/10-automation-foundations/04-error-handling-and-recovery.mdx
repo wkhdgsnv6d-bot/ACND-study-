@@ -1,0 +1,277 @@
+---
+title: "Error Handling and Recovery"
+summary: "Building workflows that keep the good records moving, put the bad ones somewhere a human can find them, and tell someone — instead of stopping dead or, worse, showing green while doing nothing."
+duration: 40
+difficulty: intermediate
+status: complete
+lastReviewed: "2026-08-12"
+objectives:
+  - "Distinguish record-level failures from run-level failures and handle each correctly"
+  - "Build a dead-letter path so failed records survive and can be replayed"
+  - "Make a workflow idempotent so retries and duplicate triggers are harmless"
+  - "Choose an alerting threshold that gets read rather than muted"
+  - "Write the recovery runbook a client can follow without you"
+prerequisites:
+  - "term-1/automation-foundations/data-transformation-and-mapping"
+xp: 20
+skillXp:
+  automation: 45
+  security: 25
+  operations: 30
+terminology:
+  - term: "Record-level failure"
+    definition: "One item cannot be processed — bad data, a missing field — while the rest are fine."
+  - term: "Run-level failure"
+    definition: "Something is wrong with the run itself — credentials rejected, destination down — so no record can succeed."
+  - term: "Dead letter"
+    definition: "A store for records that could not be processed, holding the record, the reason and the timestamp so it can be inspected and replayed."
+  - term: "Replay"
+    definition: "Re-running a stored failed record through the workflow after the cause is fixed."
+  - term: "Alert fatigue"
+    definition: "The state where alerts fire so often that people stop reading them, at which point the alerting is worse than none."
+  - term: "Runbook"
+    definition: "A short written procedure for what to do when a specific thing goes wrong."
+commonMistakes:
+  - mistake: "Stopping the whole run because one record is bad."
+    correction: "Continue processing; dead-letter the bad one."
+    why: "Stop-on-error is the platform default, so it takes a deliberate change to get anything else — and in testing, where every record is good, the difference never shows."
+  - mistake: "Catching errors so the workflow shows green."
+    correction: "Continue, but record the failure and surface a count."
+    why: "The red disappears immediately, which under deadline pressure is indistinguishable from having fixed it."
+  - mistake: "Alerting on every individual failure."
+    correction: "Alert on rate and on run-level failures. Batch the rest into a digest."
+    why: "Per-failure alerting is the easiest thing to configure and feels the most thorough, right up until the channel is muted and the one that mattered is lost with the rest."
+  - mistake: "Building recovery that only you can perform."
+    correction: "Write the runbook and make replay something the client can do."
+    why: "You know how it works, so the recovery path never gets written down — and it becomes an unpaid dependency you carry indefinitely."
+securityNote: "Dead-letter stores contain real customer data that failed to process — names, emails, payment references — sitting outside the systems that were supposed to hold it. Put it somewhere access-controlled rather than a shared spreadsheet, decide how long records are kept, and delete them when they are resolved. A dead-letter store nobody empties becomes an unmonitored copy of the client's customer list."
+reviewConcepts:
+  - key: record-vs-run
+    prompt: "What is the difference between a record-level and a run-level failure, and why handle them differently?"
+    answer: "A record-level failure means one item is bad — a malformed phone number, a missing required field — while everything else would process fine. A run-level failure means the run itself cannot work: credentials rejected, destination down. They need opposite responses. Record-level should continue past the bad item and dead-letter it, because stopping punishes four hundred good records for one bad one. Run-level should stop immediately, because continuing just produces four hundred identical failures and burns rate limit doing it."
+  - key: dead-letter
+    prompt: "What is a dead-letter store, what goes in it, and why is it required?"
+    answer: "It is somewhere failed records are kept so they survive and can be replayed. Each entry needs the original payload, the reason it failed, the step it failed at, and the timestamp — the payload alone is not enough to act on. It is required because the alternative is losing data silently: a workflow that skips what it cannot process leaves no trace, so the failure is discovered weeks later by a customer, with nothing left to recover from."
+  - key: alert-threshold
+    prompt: "How do you decide what to alert on, so the alerts are actually read?"
+    answer: "Alert immediately on run-level failures, because nothing is working and the response is urgent. Alert on a rate of record-level failures — five in an hour, or more than a few percent of a run — because a pattern means something changed. Batch everything else into a daily digest. Alerting on every individual failure is what causes the channel to be muted, and a muted channel is worse than no alerting, because everyone believes they are covered."
+quiz:
+  - id: which-failure-type
+    type: scenario
+    prompt: "A sync of 400 contacts fails on record 3 because the phone number is malformed. What should the workflow do?"
+    reviewConcept: record-vs-run
+    options:
+      - text: "Dead-letter record 3 with the reason, and carry on with the other 397."
+        correct: true
+        why: "Correct. This is record-level: one bad item among many good ones. Stopping would punish 397 valid contacts for one malformed phone number, and the client would be left with a sync that never completes until someone edits a record by hand."
+      - text: "Stop the run so the bad data can be fixed before anything else is written."
+        correct: false
+        why: "This is the platform default and it is wrong here. Nothing about record 3 makes records 4 through 400 unsafe, and stopping means the client's sync is blocked by a single typo."
+      - text: "Skip it and continue, without recording anything."
+        correct: false
+        why: "Right instinct on continuing, fatal on the second half. That contact silently does not exist, and nobody learns until someone goes looking for them."
+      - text: "Retry record 3 until the phone number becomes valid."
+        correct: false
+        why: "The data will not change on its own. This is a permanent failure being retried forever — it consumes rate limit and never succeeds."
+  - id: run-level-response
+    type: scenario
+    prompt: "Halfway through the same sync, the destination API starts returning 401 on every request. What should happen?"
+    reviewConcept: record-vs-run
+    options:
+      - text: "Stop the run immediately and alert, because nothing can succeed until the credential is fixed."
+        correct: true
+        why: "Correct. This is run-level: the failure is not about any record. Continuing produces hundreds of identical failures, floods the dead-letter store with records that were perfectly fine, and burns rate limit doing it."
+      - text: "Dead-letter each record as it fails and continue to the end."
+        correct: false
+        why: "It fills the dead-letter store with 200 good records and obscures the actual problem, which is one expired credential. Replaying afterwards then means re-processing all of them."
+      - text: "Retry each record with exponential backoff."
+        correct: false
+        why: "A 401 is permanent until something changes on the account. Retrying a rejected credential repeatedly is also how applications get locked out."
+      - text: "Pause and resume automatically in an hour."
+        correct: false
+        why: "Reasonable for a 503, wrong for a 401 — a credential does not fix itself, so this just delays the alert by an hour."
+  - id: alert-design
+    type: architecture
+    prompt: "Your automation processes about 2,000 records a day with a typical failure rate of two or three. How do you alert?"
+    reviewConcept: alert-threshold
+    options:
+      - text: "Immediate alert on run-level failures; alert if record failures exceed a threshold in an hour; a daily digest for the rest."
+        correct: true
+        why: "Correct. It separates 'something is broken' from 'something needs attention eventually'. The urgent path stays quiet enough to be believed, and the routine failures still get seen."
+      - text: "Alert on every failed record so nothing is missed."
+        correct: false
+        why: "Two or three a day is tolerable until a bad batch produces fifty, the channel gets muted, and the outage alert next week lands in a channel nobody reads."
+      - text: "No alerts; a weekly report is sufficient at this volume."
+        correct: false
+        why: "A run-level failure could mean six days of nothing working before anyone notices. The threshold has to be time-based for the urgent class."
+      - text: "Alert only when the failure rate exceeds ten percent."
+        correct: false
+        why: "Ten percent of 2,000 is 200 failed records before anyone hears about it. The threshold is far too loose for the volume."
+  - id: recovery-runbook
+    type: short-answer
+    prompt: "Write the runbook entry a client would follow when they receive a 'records failed to sync' email while you are unavailable."
+    reviewConcept: dead-letter
+    rubric:
+      - "Says where to look and what they will see"
+      - "Explains how to tell a data problem from a system problem"
+      - "Gives a concrete action for the common case"
+      - "States when to stop and wait rather than keep trying"
+      - "Is written for a non-technical person"
+    modelAnswer: "**If you get a 'records failed to sync' email.** Open the Failed Records sheet linked in the email. Each row shows the customer, the time, and a short reason. Most of the time the reason is a data problem — a phone number in an unusual format, or a missing email address. If so, fix it in the booking system, then tick the Retry box on that row. It will be picked up within fifteen minutes and the row will disappear once it succeeds. If several rows all say the same thing, or the reason mentions 'unauthorised' or 'unavailable', that is a system problem rather than a data one — do not tick Retry, because it will fail again. Send me the email and I will look; if it is urgent and I have not replied within an hour, ring me. Nothing is lost while rows are sitting there — they will keep until someone deals with them, so it is safe to leave until morning."
+    points: 5
+practicalTask:
+  title: "Add a full failure path to a working automation"
+  brief: "Take an automation you have built that currently only handles the happy path. Add: continue-on-record-failure, a dead-letter store holding the payload, reason, step and timestamp, idempotency so a duplicate trigger is harmless, and alerting split into urgent and digest. Then prove each one by deliberately causing the failure: feed it a malformed record, revoke the credential mid-run, and fire the same trigger twice. Capture what happened each time. Finish by writing the client-facing runbook."
+  estimatedMinutes: 150
+  rubric:
+    - "One bad record no longer stops the run, demonstrated"
+    - "The dead-letter store captures payload, reason, step and timestamp"
+    - "A duplicate trigger produces exactly one result, demonstrated"
+    - "A run-level failure stops the run and alerts, demonstrated"
+    - "Alerting distinguishes urgent from routine, with a stated threshold"
+    - "Includes a runbook written for a non-technical person"
+  evidence:
+    - written
+    - screenshot
+    - repo-url
+  xp: 180
+  skillXp:
+    automation: 65
+    operations: 40
+    security: 25
+labs:
+  - debug-api-response
+software:
+  - n8n
+resources:
+  - label: "n8n — Error handling"
+    url: "https://docs.n8n.io/flow-logic/error-handling/"
+    type: docs
+    note: "Error workflows and continue-on-fail are the two features this lesson is built on. Read it with your failure table beside you."
+  - label: "Google SRE Book — Monitoring Distributed Systems"
+    url: "https://sre.google/sre-book/monitoring-distributed-systems/"
+    type: article
+    note: "The section on symptoms versus causes is what turns an alert someone reads into one they mute. Skim it once."
+---
+
+Every automation fails. The question a client is really buying an answer to is
+what happens next.
+
+## Two kinds of failure
+
+They need opposite responses, and conflating them is the most common design
+error in this module.
+
+**Record-level.** One item cannot be processed — a malformed phone number, a
+missing required field — while everything else would be fine.
+
+→ **Continue.** Dead-letter that record. Process the rest.
+
+**Run-level.** The run itself cannot work — credentials rejected, destination
+down, the trigger firing with no data.
+
+→ **Stop.** Alert. Nothing will succeed until someone acts.
+
+Getting this backwards is expensive in both directions. Stop the run for one bad
+phone number and 397 good contacts do not sync. Continue through a 401 and you
+fill the dead-letter store with 200 perfectly good records while burning rate
+limit on failures.
+
+The test is simple: **would the next record succeed?** If yes, it is
+record-level. If no, it is run-level.
+
+## The dead letter
+
+When a record cannot be processed, it has to go somewhere. Not skipped — kept.
+
+Each entry needs four things:
+
+- **The original payload**, exactly as received.
+- **The reason**, in words. "Phone number not in E.164 format", not "error".
+- **The step** it failed at.
+- **The timestamp.**
+
+The payload alone is not enough. Without the reason, whoever opens it is
+debugging from scratch.
+
+It does not need to be sophisticated. A database table is ideal; a spreadsheet
+the workflow appends to is entirely adequate for a small client and has the
+advantage that they can read it.
+
+What matters is that **the record survives** and that someone can put it back
+through once the cause is fixed. Build the replay path at the same time — a
+tick-box column, or a "retry failed records" workflow. A dead-letter store with
+no replay is a list of things you have lost, written down.
+
+One security note that is easy to miss: this store contains real customer data
+sitting outside the systems meant to hold it. Access-control it, decide a
+retention period, and empty it. A dead-letter sheet nobody clears becomes an
+unmonitored copy of the client's customer list.
+
+## Idempotency, again
+
+The theme of the whole term arrives here as a build step.
+
+Your workflow **will** be triggered twice for the same thing — a vendor retry, a
+customer double-clicking, a manual re-run, a platform hiccup. Make it harmless:
+
+1. Take a stable id from the payload — the booking id, the vendor's event id.
+2. Before doing anything, check whether that id has been processed.
+3. If it has, stop successfully. Not an error; there is nothing to do.
+4. Otherwise, record it and proceed.
+
+The check must be atomic where possible — a unique constraint rather than a
+read-then-write — because two simultaneous deliveries can otherwise both pass
+the check.
+
+If the payload has no stable id, derive one from fields that will not change:
+source system, record id, event type. Do not use the timestamp alone; two
+retries of the same event can carry different receipt times.
+
+## Alerting people will read
+
+The failure mode here is human. Alert on everything and the channel is muted
+within a fortnight — and then the alert that mattered arrives in a channel
+nobody reads. Everyone believes they are covered. Nobody is.
+
+Three tiers:
+
+**Urgent, immediately.** Run-level failures. Nothing is working. Someone needs
+to act now.
+
+**Threshold, hourly.** "12 records failed in the last hour" when the norm is
+two or three. A rate change means something has changed — an API deployed, a
+form field renamed.
+
+**Digest, daily.** "3 records failed yesterday, here they are." Routine, needs
+attention eventually, does not need a notification at 2am.
+
+Set the threshold from the actual baseline, not from a round number. If two or
+three failures a day is normal, alert at five in an hour — not at ten percent,
+which at 2,000 records a day is 200 failures before anyone hears.
+
+## The runbook
+
+The last piece is the one that decides whether you have built a service or a
+dependency.
+
+Write, in plain language: what the alert means, where to look, how to tell a
+data problem from a system problem, what to do about the common case, and when
+to stop and call you.
+
+Two paragraphs is enough. What it must do is let the client resolve the routine
+case without you — which is better for them and, in the end, better for you,
+because the alternative is being rung about a malformed phone number on a
+Saturday.
+
+And be explicit that **nothing is lost while records sit in the dead-letter
+store.** That single sentence is the difference between a client who deals with
+it Monday and a client who panics on Sunday night.
+
+## What to take away
+
+Ask whether the next record would succeed: that decides record-level from
+run-level. Dead-letter with the reason, not just the payload, and build replay
+at the same time. Key idempotency on a stable id. Alert in three tiers so the
+urgent one is still believed. And write the runbook, because a recovery only you
+can perform is not a finished piece of work.

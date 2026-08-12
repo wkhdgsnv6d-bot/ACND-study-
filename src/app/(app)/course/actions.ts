@@ -259,7 +259,7 @@ export async function completeLesson(lessonPath: string): Promise<ActionResult> 
 
   await seedReviewCards(supabase, user, {
     lessonPath: lesson.path,
-    concepts: lesson.frontmatter.reviewConcepts,
+    concepts: lesson.frontmatter.reviewConcepts.map((c) => c.key),
     fromMistake: false,
   });
 
@@ -282,7 +282,12 @@ export async function completeLesson(lessonPath: string): Promise<ActionResult> 
 async function seedReviewCards(
   supabase: SupabaseClient,
   user: User,
-  options: { lessonPath: string; concepts: readonly string[]; fromMistake: boolean },
+  options: {
+    lessonPath: string;
+    /** Concept keys. Prompts and answers are resolved from content at read time. */
+    concepts: readonly string[];
+    fromMistake: boolean;
+  },
 ): Promise<void> {
   if (options.concepts.length === 0) return;
 

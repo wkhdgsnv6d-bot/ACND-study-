@@ -205,6 +205,23 @@ const commonMistake = z.object({
 });
 export type CommonMistake = z.infer<typeof commonMistake>;
 
+/**
+ * A concept worth remembering months later, seeded as a spaced-repetition card.
+ *
+ * The prompt and answer live in the content rather than being derived from the
+ * key, because a de-hyphenated slug is not a question and a review card that
+ * cannot show an answer is a card that cannot teach you anything. If a concept
+ * is worth reviewing, it is worth writing the recall prompt for.
+ */
+const reviewConcept = z.object({
+  key: slugSegment,
+  /** Asked from memory. Should be answerable without the lesson open. */
+  prompt: z.string().min(10),
+  /** What a correct answer contains. Shown after self-grading is committed to. */
+  answer: z.string().min(10),
+});
+export type ReviewConcept = z.infer<typeof reviewConcept>;
+
 const resourceLink = z.object({
   label: z.string().min(1),
   url: z.string().url(),
@@ -251,7 +268,27 @@ export const lessonFrontmatter = z.object({
   resources: z.array(resourceLink).default([]),
 
   /** Concepts this lesson introduces, seeded as spaced-repetition cards. */
-  reviewConcepts: z.array(slugSegment).default([]),
+  reviewConcepts: z.array(reviewConcept).default([]),
+}).superRefine((lesson, ctx) => {
+  /**
+   * A quiz question may route a wrong answer to a review concept. If that key
+   * does not exist, the card is seeded with no prompt and no answer and the
+   * learner meets an empty card weeks later, long after the typo is findable.
+   * Failing the build is cheaper.
+   */
+  const declared = new Set(lesson.reviewConcepts.map((c) => c.key));
+
+  lesson.quiz.forEach((question, index) => {
+    if (question.reviewConcept && !declared.has(question.reviewConcept)) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["quiz", index, "reviewConcept"],
+        message:
+          `"${question.reviewConcept}" is not declared in reviewConcepts. ` +
+          `Declared: ${[...declared].join(", ") || "(none)"}.`,
+      });
+    }
+  });
 });
 
 export type LessonFrontmatter = z.infer<typeof lessonFrontmatter>;

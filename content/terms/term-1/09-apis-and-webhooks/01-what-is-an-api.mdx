@@ -43,9 +43,15 @@ commonMistakes:
     why: "The failure feels like your fault, so the instinct is to re-read your own code rather than the server's explanation."
 securityNote: "From the very first call you make, treat API credentials as you would the keys to a client's office. They belong in environment variables, never in code you commit, never in a screenshot, and never pasted into a chat window — including a chat with an AI assistant. A leaked key is not an inconvenience; it is unauthorised access to somebody's customer data."
 reviewConcepts:
-  - api-definition
-  - request-response-cycle
-  - client-server
+  - key: api-definition
+    prompt: "What is an API, and what does it deliberately hide from you?"
+    answer: "A defined set of operations one system exposes so other software can use it. It hides the internals — how the data is stored, what language the system is written in, what happens between your request and the reply. You get a contract, not a look inside. That is the point: the vendor can rebuild everything behind it and your integration keeps working, as long as the contract holds."
+  - key: request-response-cycle
+    prompt: "Name the parts of an API request and the parts of the response it gets back."
+    answer: "The request carries a method (what you want done), a URL identifying the endpoint, headers (including authentication), and usually a body of data for anything that creates or changes something. The response carries a status code (whether it worked and broadly why), headers, and usually a body — either the data you asked for or an explanation of the failure. When a call fails, the response almost always says why; read it before re-reading your own code."
+  - key: client-server
+    prompt: "In an integration you have built, which side is the client and which is the server — and why does it matter?"
+    answer: "Your code or automation platform is the client: it makes the request. The vendor's system is the server: it receives the request and decides how to respond. It matters because responsibility follows the roles. The server decides what is allowed, what the data looks like, and when to say no; the client's job is to ask correctly, handle every answer including refusal, and never assume success."
 quiz:
   - id: api-plain-definition
     type: multiple-choice

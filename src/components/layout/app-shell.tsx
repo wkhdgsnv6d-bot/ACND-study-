@@ -8,6 +8,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import { SidebarNav } from "@/components/layout/sidebar";
 import { ThemeToggle } from "@/components/layout/theme-toggle";
 import { UserMenu } from "@/components/layout/user-menu";
+import { CommandPalette } from "@/components/search/command-palette";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
@@ -100,6 +101,7 @@ export function AppShell({
           <span className="text-sm font-medium lg:hidden">Ascend</span>
 
           <div className="ml-auto flex items-center gap-1.5">
+            <CommandPalette />
             <ThemeToggle />
             <UserMenu email={userEmail} displayName={displayName} />
           </div>

@@ -46,7 +46,7 @@ export interface NavGroup {
 }
 
 /** Bumped as each phase lands. Everything at or below this is navigable. */
-export const CURRENT_PHASE: BuildPhase = 6;
+export const CURRENT_PHASE: BuildPhase = 7;
 
 export const NAV_GROUPS: NavGroup[] = [
   {
@@ -174,6 +174,12 @@ export const NAV_GROUPS: NavGroup[] = [
   {
     label: null,
     items: [
+      {
+        label: "Weekly review",
+        href: "/weekly",
+        icon: CalendarCheck,
+        phase: 7,
+      },
       {
         label: "Progress",
         href: "/progress",

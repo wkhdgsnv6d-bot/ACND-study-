@@ -499,6 +499,43 @@ export function buildGlossary(): Array<{
   return entries.sort((a, b) => a.term.localeCompare(b.term));
 }
 
+export interface ReviewConceptEntry {
+  key: string;
+  prompt: string;
+  answer: string;
+  lessonPath: string;
+  lessonTitle: string;
+  lessonHref: string;
+}
+
+/**
+ * Every review concept declared anywhere in the curriculum, keyed for lookup.
+ *
+ * Review cards store only the concept key; the prompt and answer are resolved
+ * from content here. That means editing a lesson corrects every card already in
+ * rotation, rather than leaving learners reviewing a wording that no longer
+ * matches what the lesson teaches.
+ */
+export function buildReviewConcepts(): Map<string, ReviewConceptEntry> {
+  const { curriculum } = loadCurriculum();
+  const entries = new Map<string, ReviewConceptEntry>();
+
+  for (const lesson of curriculum.lessonsByPath.values()) {
+    for (const concept of lesson.frontmatter.reviewConcepts) {
+      entries.set(concept.key, {
+        key: concept.key,
+        prompt: concept.prompt,
+        answer: concept.answer,
+        lessonPath: lesson.path,
+        lessonTitle: lesson.frontmatter.title,
+        lessonHref: `/course/${lesson.termSlug}/${lesson.moduleSlug}/${lesson.slug}`,
+      });
+    }
+  }
+
+  return entries;
+}
+
 /* ------------------------------------------------------------------ */
 /* Helpers                                                             */
 /* ------------------------------------------------------------------ */

@@ -384,11 +384,11 @@ Three modelling decisions are encoded rather than assumed:
 | 1 | Scaffold, design tokens, content pipeline, engines, CI | **Done** |
 | 2 | Drizzle schema, RLS, auth, app shell, dashboard, settings | **Done** |
 | 3 | Lesson experience, progress, notes, quizzes, practical submissions | **Done** |
-| 4 | Skill tree, certifications, achievements, labs, module exams | Next |
-| 5 | Business Lab, Client Pipeline, Market Validation, Revenue/MRR | |
-| 6 | Software Library, Template Vault, Projects, Resources | |
-| 7 | Search, command palette, streaks, Today, Weekly Review, analytics, export | |
-| 8 | Curriculum content, module by module | |
+| 4 | Skill tree, certifications, achievements, labs | **Done** (module exams deferred) |
+| 5 | Business Lab, Client Pipeline, Market Validation, Revenue/MRR | **Done** |
+| 6 | Software Library, Template Vault, Projects, Resources | **Done** |
+| 7 | Search, command palette, streaks, Today, Weekly Review, analytics, export | **Done** |
+| 8 | Curriculum content, module by module | In progress |
 | 9 | Security review, a11y, responsive, performance, deploy | |
 | 10 | AI Study Assistant wired to a real API | |
 

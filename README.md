@@ -21,13 +21,22 @@ system can be earned by lesson completion alone.
 
 ## Status
 
-**Phases 1–3 complete** — design system, content pipeline, scoring engines,
-database with row-level security, authentication, application shell, dashboard,
-settings, and the lesson experience: MDX rendering, reading progress, knowledge
-checks graded server-side, spaced repetition seeded from wrong answers, notes
-and evidence-bearing practical submissions. Phase 4 (skill tree, certifications,
-labs and module exams) is next. See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for the
-full plan and the reasoning behind each decision.
+**Phases 1–7 complete** — the platform itself is built. Design system, content
+pipeline and scoring engines; database with row-level security; authentication,
+application shell, dashboard and settings; the lesson experience (MDX rendering,
+reading progress, server-graded knowledge checks, spaced repetition seeded from
+wrong answers, notes, evidence-bearing practical submissions); the skill tree,
+certifications and interactive labs; the Business Lab, Client Pipeline, Market
+Validation and Revenue surfaces; the Software Library, Template Vault, Projects
+and Resources; and search with a ⌘K palette, the Today plan, Review sessions,
+Weekly Review, progress analytics and full data export.
+
+**Phase 8 — the curriculum itself — is in progress.** Only lessons marked
+`status: complete` count toward anything; `npm run content:check` prints exactly
+how much of each term is written. Module exams are deferred, and the AI Study
+Assistant (Phase 10) is not built. See
+[`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for the full plan and the
+reasoning behind each decision.
 
 The sidebar marks every surface that is not built yet with the phase that
 builds it, so the app always tells the truth about what exists.

@@ -1,5 +1,13 @@
 import type { ReactNode } from "react";
 
+/**
+ * Rendered per request so the CSP nonce set in `proxy.ts` reaches the script
+ * tags. A prerendered page is built before any request exists, so it carries no
+ * nonce and `strict-dynamic` would block its own bundle. These pages are three
+ * forms and a message; there is nothing to gain by caching them.
+ */
+export const dynamic = "force-dynamic";
+
 export default function AuthLayout({ children }: { children: ReactNode }) {
   return (
     <div className="flex min-h-dvh flex-col items-center justify-center px-6 py-12">

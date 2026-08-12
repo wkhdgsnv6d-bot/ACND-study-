@@ -91,6 +91,7 @@ export default async function LabsPage() {
                               <span
                                 key={key}
                                 title={SKILLS[key].name}
+                                role="img"
                                 aria-label={SKILLS[key].name}
                                 className="size-1.5 rounded-full"
                                 style={{ backgroundColor: `var(${SKILLS[key].colorToken})` }}

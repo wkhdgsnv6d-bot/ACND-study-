@@ -20,7 +20,7 @@ export default function CheckEmailPage() {
           Nothing arrived? Check spam, and confirm the redirect URL in your
           Supabase project&apos;s auth settings matches this site.
         </p>
-        <Link href="/login" className="inline-block text-sm text-primary hover:underline">
+        <Link href="/login" className="inline-block text-sm text-primary underline underline-offset-2">
           Back to sign in
         </Link>
       </CardBody>

@@ -7,6 +7,9 @@ import { missingSupabaseVars } from "@/lib/env";
 
 export const metadata: Metadata = { title: "Setup" };
 
+/** Per-request, so the CSP nonce from `proxy.ts` reaches the script tags. */
+export const dynamic = "force-dynamic";
+
 /**
  * Shown when Supabase is not configured. `proxy.ts` rewrites every route here
  * rather than presenting a sign-in form that cannot possibly work.

@@ -2,7 +2,7 @@
 
 import { Moon, Sun } from "lucide-react";
 
-import { THEME_STORAGE_KEY } from "@/components/layout/theme-script";
+import { THEME_STORAGE_KEY } from "@/lib/domain/theme";
 import { Button } from "@/components/ui/button";
 
 /**

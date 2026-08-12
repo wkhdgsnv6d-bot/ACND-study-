@@ -25,7 +25,7 @@ export default async function LoginPage(props: PageProps<"/login">) {
 
         <p className="text-center text-sm text-muted-foreground">
           No account yet?{" "}
-          <Link href="/signup" className="text-primary hover:underline">
+          <Link href="/signup" className="text-primary underline underline-offset-2">
             Create one
           </Link>
         </p>

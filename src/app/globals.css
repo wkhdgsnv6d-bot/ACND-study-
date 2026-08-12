@@ -21,7 +21,13 @@
   --foreground: oklch(0.967 0.002 285);
   --muted: oklch(0.215 0.007 285);
   --muted-foreground: oklch(0.672 0.013 286);
-  --subtle-foreground: oklch(0.55 0.012 286);
+  /*
+   * 0.55 measured 3.86:1 against surface-1 — below the 4.5:1 minimum, and this
+   * token carries sidebar section headings, timestamps and hints on every
+   * screen. 0.63 measures ~5.3:1 on surface-1 and ~5.0:1 on surface-2 while
+   * staying visibly quieter than muted-foreground.
+   */
+  --subtle-foreground: oklch(0.63 0.012 286);
 
   --card: oklch(0.185 0.006 285);
   --card-foreground: var(--foreground);
@@ -34,9 +40,9 @@
   --ring: oklch(0.62 0.176 277);
 
   /* Brand accent — Ascend indigo */
-  --primary: oklch(0.629 0.176 277);
+  --primary: oklch(0.68 0.176 277);
   --primary-foreground: oklch(0.145 0.01 285);
-  --primary-muted: oklch(0.629 0.176 277 / 0.14);
+  --primary-muted: oklch(0.68 0.176 277 / 0.14);
 
   --secondary: oklch(0.235 0.008 286);
   --secondary-foreground: var(--foreground);
@@ -50,9 +56,14 @@
   --warning: oklch(0.79 0.15 78);
   --warning-foreground: oklch(0.2 0.03 78);
   --warning-muted: oklch(0.79 0.15 78 / 0.14);
-  --destructive: oklch(0.63 0.2 22);
-  --destructive-foreground: oklch(0.97 0.01 22);
-  --destructive-muted: oklch(0.63 0.2 22 / 0.14);
+  --destructive: oklch(0.68 0.2 22);
+  /*
+   * Dark text, like every other accent in this theme. Near-white on a red this
+   * light measured 2.89:1 — the delete button's own label was the least legible
+   * text in the application.
+   */
+  --destructive-foreground: oklch(0.16 0.03 22);
+  --destructive-muted: oklch(0.68 0.2 22 / 0.14);
   --info: oklch(0.7 0.13 232);
   --info-foreground: oklch(0.16 0.02 232);
   --info-muted: oklch(0.7 0.13 232 / 0.14);
@@ -91,8 +102,13 @@
 
   --foreground: oklch(0.205 0.008 285);
   --muted: oklch(0.968 0.002 285);
-  --muted-foreground: oklch(0.5 0.014 286);
-  --subtle-foreground: oklch(0.6 0.012 286);
+  /*
+   * On near-white surfaces nothing lighter than roughly 0.55 can reach 4.5:1,
+   * so the light theme's hierarchy is necessarily more compressed than the
+   * dark one: muted moves down to keep a visible step below subtle.
+   */
+  --muted-foreground: oklch(0.47 0.014 286);
+  --subtle-foreground: oklch(0.52 0.012 286);
 
   --card: oklch(1 0 0);
   --card-foreground: var(--foreground);
@@ -104,27 +120,27 @@
   --input: oklch(0.945 0.003 286);
   --ring: oklch(0.58 0.19 277);
 
-  --primary: oklch(0.548 0.196 277);
+  --primary: oklch(0.52 0.196 277);
   --primary-foreground: oklch(0.99 0.005 277);
-  --primary-muted: oklch(0.548 0.196 277 / 0.1);
+  --primary-muted: oklch(0.52 0.196 277 / 0.1);
 
   --secondary: oklch(0.968 0.002 285);
   --secondary-foreground: var(--foreground);
   --accent: oklch(0.958 0.003 286);
   --accent-foreground: var(--foreground);
 
-  --success: oklch(0.52 0.14 155);
+  --success: oklch(0.48 0.14 155);
   --success-foreground: oklch(0.99 0.01 155);
-  --success-muted: oklch(0.52 0.14 155 / 0.1);
-  --warning: oklch(0.62 0.13 78);
+  --success-muted: oklch(0.48 0.14 155 / 0.1);
+  --warning: oklch(0.5 0.13 78);
   --warning-foreground: oklch(0.99 0.01 78);
-  --warning-muted: oklch(0.62 0.13 78 / 0.12);
-  --destructive: oklch(0.55 0.21 25);
+  --warning-muted: oklch(0.5 0.13 78 / 0.12);
+  --destructive: oklch(0.52 0.21 25);
   --destructive-foreground: oklch(0.99 0.01 25);
-  --destructive-muted: oklch(0.55 0.21 25 / 0.1);
-  --info: oklch(0.55 0.13 232);
+  --destructive-muted: oklch(0.52 0.21 25 / 0.1);
+  --info: oklch(0.48 0.13 232);
   --info-foreground: oklch(0.99 0.01 232);
-  --info-muted: oklch(0.55 0.13 232 / 0.1);
+  --info-muted: oklch(0.48 0.13 232 / 0.1);
 
   --skill-web: oklch(0.55 0.16 255);
   --skill-crm: oklch(0.55 0.15 310);

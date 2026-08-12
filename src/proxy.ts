@@ -30,21 +30,83 @@ function isPublicPath(pathname: string): boolean {
   );
 }
 
+/**
+ * Content Security Policy.
+ *
+ * Script execution is restricted to a per-request nonce plus whatever those
+ * scripts load themselves (`strict-dynamic`), which is the part that actually
+ * stops injected script from running. Next.js reads the nonce out of this
+ * header during server rendering and applies it to its own tags, so nothing
+ * needs to thread it through by hand.
+ *
+ * `style-src` deliberately allows inline styles. Progress bars, skill colours
+ * and the study charts all set widths and heights through the `style`
+ * attribute, which no nonce can cover — a nonce authorises `<style>` elements,
+ * not attributes. Blocking them would break every meter in the app to defend
+ * against a class of attack that needs an injection foothold this app does not
+ * offer: no user-supplied HTML is ever rendered as markup.
+ *
+ * `connect-src` must name the Supabase project, because the browser talks to it
+ * directly for sign-in and token refresh.
+ */
+function contentSecurityPolicy(nonce: string): string {
+  const isDev = process.env.NODE_ENV === "development";
+  const supabase = env.supabaseUrl ?? "";
+
+  return [
+    `default-src 'self'`,
+    // 'unsafe-eval' is React's dev-only error reconstruction. Never in production.
+    `script-src 'self' 'nonce-${nonce}' 'strict-dynamic'${isDev ? " 'unsafe-eval'" : ""}`,
+    `style-src 'self' 'unsafe-inline'`,
+    // https: covers project portfolio screenshots, which are user-supplied URLs.
+    `img-src 'self' blob: data: https:`,
+    `font-src 'self'`,
+    `connect-src 'self' ${supabase}${isDev ? " ws: wss:" : ""}`.trim(),
+    `object-src 'none'`,
+    `base-uri 'self'`,
+    `form-action 'self'`,
+    `frame-ancestors 'none'`,
+    `upgrade-insecure-requests`,
+  ].join("; ");
+}
+
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
+
+  const nonce = Buffer.from(crypto.randomUUID()).toString("base64");
+  const csp = contentSecurityPolicy(nonce);
+
+  /**
+   * Request headers carrying the nonce, rebuilt at each response so that cookie
+   * rotation performed above is reflected. Next reads `Content-Security-Policy`
+   * off the *request* to find the nonce it should stamp onto its script tags.
+   */
+  const forwardedHeaders = () => {
+    const headers = new Headers(request.headers);
+    headers.set("x-nonce", nonce);
+    headers.set("Content-Security-Policy", csp);
+    return headers;
+  };
+
+  /** Applied to every response, including redirects. */
+  const harden = (response: NextResponse) => {
+    response.headers.set("Content-Security-Policy", csp);
+    return response;
+  };
 
   // With no Supabase project configured there is no session to refresh and no
   // meaningful way to sign in. Send everything to the setup screen, which
   // explains what to add, rather than to a login form that cannot work.
   if (!isSupabaseConfigured()) {
-    if (pathname === "/setup") return NextResponse.next();
+    const options = { request: { headers: forwardedHeaders() } };
+    if (pathname === "/setup") return harden(NextResponse.next(options));
     const url = request.nextUrl.clone();
     url.pathname = "/setup";
     url.search = "";
-    return NextResponse.rewrite(url);
+    return harden(NextResponse.rewrite(url, options));
   }
 
-  let response = NextResponse.next({ request });
+  let response = NextResponse.next({ request: { headers: forwardedHeaders() } });
 
   const supabase = createServerClient(env.supabaseUrl!, env.supabaseAnonKey!, {
     cookies: {
@@ -55,7 +117,7 @@ export async function proxy(request: NextRequest) {
         for (const { name, value } of cookiesToSet) {
           request.cookies.set(name, value);
         }
-        response = NextResponse.next({ request });
+        response = NextResponse.next({ request: { headers: forwardedHeaders() } });
         for (const { name, value, options } of cookiesToSet) {
           response.cookies.set(name, value, options);
         }
@@ -75,17 +137,17 @@ export async function proxy(request: NextRequest) {
     url.search = "";
     // Preserve where they were headed so sign-in can return them to it.
     if (pathname !== "/") url.searchParams.set("next", pathname);
-    return NextResponse.redirect(url);
+    return harden(NextResponse.redirect(url));
   }
 
   if (user && (pathname === "/login" || pathname === "/signup")) {
     const url = request.nextUrl.clone();
     url.pathname = "/dashboard";
     url.search = "";
-    return NextResponse.redirect(url);
+    return harden(NextResponse.redirect(url));
   }
 
-  return response;
+  return harden(response);
 }
 
 export const config = {

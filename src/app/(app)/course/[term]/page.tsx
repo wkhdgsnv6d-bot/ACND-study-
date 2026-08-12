@@ -167,6 +167,7 @@ export default async function TermPage(props: PageProps<"/course/[term]">) {
                           {mod.frontmatter.skills.map((key) => (
                             <span
                               key={key}
+                              role="img"
                               aria-label={SKILLS[key].name}
                               title={SKILLS[key].name}
                               className="size-1.5 rounded-full"

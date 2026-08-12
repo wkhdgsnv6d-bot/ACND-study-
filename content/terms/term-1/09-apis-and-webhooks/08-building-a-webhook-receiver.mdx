@@ -1,0 +1,321 @@
+---
+title: "Building a Webhook Receiver"
+summary: "Standing up an endpoint that a vendor can call — and making it safe: verifying signatures so anyone with the URL cannot forge events, responding fast enough to avoid retries, and processing idempotently so a duplicate changes nothing."
+duration: 45
+difficulty: intermediate
+status: complete
+lastReviewed: "2026-08-12"
+objectives:
+  - "Stand up a webhook endpoint and receive a real payload from a vendor"
+  - "Verify a webhook signature and explain what it does and does not prove"
+  - "Respond within the vendor's timeout by separating acknowledgement from work"
+  - "Make processing idempotent so a duplicate delivery is harmless"
+  - "Test a receiver, including the failure paths, before pointing a client at it"
+prerequisites:
+  - "term-1/apis-and-webhooks/webhooks-vs-polling"
+xp: 20
+skillXp:
+  api: 40
+  automation: 45
+  security: 45
+terminology:
+  - term: "Signature"
+    definition: "A hash of the request body combined with a shared secret, sent in a header, which proves the sender knew the secret and that the body was not altered."
+  - term: "Signing secret"
+    definition: "A value known only to you and the vendor, used to produce and verify signatures. Distinct from an API key."
+  - term: "Raw body"
+    definition: "The exact bytes the vendor sent, before any parsing. Signature verification must use these, not a re-serialised object."
+  - term: "Replay attack"
+    definition: "Capturing a valid signed request and sending it again later to make the same thing happen twice."
+  - term: "Timestamp tolerance"
+    definition: "A window — typically five minutes — outside which a signed request is rejected as too old, limiting replay."
+  - term: "Constant-time comparison"
+    definition: "Comparing two secrets in a way that takes the same time regardless of where they first differ, so timing cannot reveal the secret."
+  - term: "Acknowledge then process"
+    definition: "Returning 200 immediately on receipt and doing the real work afterwards, so the vendor does not time out and retry."
+commonMistakes:
+  - mistake: "Trusting a webhook because it arrived at the right URL."
+    correction: "The URL is not a secret. Verify the signature."
+    why: "The URL feels private because you generated it and never published it — but it appears in vendor dashboards, logs, screenshots and browser history, and it only takes one exposure."
+  - mistake: "Verifying the signature against parsed and re-serialised JSON."
+    correction: "Verify against the raw bytes. Any reformatting changes the hash."
+    why: "Most frameworks parse the body before your code runs, so the raw bytes are gone by the time you look — and the failure is a confusing 'signature invalid' on a payload that is visibly correct."
+  - mistake: "Doing the full workflow before responding to the vendor."
+    correction: "Acknowledge in under a couple of seconds, then process."
+    why: "It works in testing, where the workflow is fast and the payload small. It breaks in production, when one slow downstream call pushes the response past the vendor's timeout and every event starts arriving twice."
+  - mistake: "Assuming your endpoint will only ever receive real events."
+    correction: "It is a public URL. It will receive scanners, malformed bodies and replays."
+    why: "In development the only traffic is your own tests, so the idea of hostile input never comes up until the endpoint has been live for a week."
+securityNote: "A webhook endpoint accepts data from the internet and acts on it. Treat every request as hostile until the signature verifies: verify before parsing anything you act on, reject requests whose timestamp is outside a few minutes to limit replay, compare signatures in constant time, and never let an unverified payload trigger anything that moves money, sends a message to a customer, or deletes data. If the vendor does not offer signatures — some do not — say so in writing to the client and mitigate with an unguessable URL plus a shared secret in a header, and be explicit that this is weaker."
+reviewConcepts:
+  - key: signature-verification
+    prompt: "What does verifying a webhook signature prove, and what does it not prove?"
+    answer: "It proves the sender knew the shared signing secret and that the body was not altered in transit — so the event genuinely came from the vendor and says what they sent. It does not prove the event is recent, which is why a timestamp check is needed to limit replay, and it does not prove the event is new: a legitimate signed event can be delivered twice by the vendor's own retry, so idempotency is still required."
+  - key: raw-body-rule
+    prompt: "Why must signature verification use the raw request body?"
+    answer: "Because the signature is a hash of the exact bytes the vendor sent. Parsing JSON and re-serialising it changes whitespace, key order and number formatting, so the hash no longer matches even though the data is identical. Most frameworks parse the body before your handler runs, so you have to explicitly capture the raw bytes — and the symptom of getting this wrong is an invalid signature on a payload that looks perfectly correct."
+  - key: ack-then-process
+    prompt: "Why acknowledge a webhook before doing the work, and what does that require?"
+    answer: "Because vendors time out in a few seconds and retry what they think failed. If the full workflow runs before you respond, one slow downstream call pushes you past the timeout and every event starts arriving twice. So respond 200 as soon as the signature verifies, then process asynchronously — via a queue, a stored row, or the platform's own async step. It requires that failures after acknowledgement are still visible, since the vendor now believes the event was delivered and will not retry it."
+  - key: webhook-idempotency
+    prompt: "How do you make webhook processing idempotent, and why is it not optional?"
+    answer: "Record the vendor's event id on receipt and ignore any event whose id you have already processed — storing it with a unique constraint so the check is atomic rather than a read-then-write race. It is not optional because delivery is at-least-once by design: a response that arrives after the vendor's timeout causes a retry of work you already did. Without it you get rare, unreproducible duplicates that look like a bug in your logic and are not."
+quiz:
+  - id: url-is-not-a-secret
+    type: scenario
+    prompt: "Your webhook URL contains a long random string, so it is effectively unguessable. Do you still need signature verification?"
+    reviewConcept: signature-verification
+    options:
+      - text: "Yes. The URL is not a secret in practice, and it only takes one exposure for anyone to post forged events."
+        correct: true
+        why: "Correct. The URL appears in the vendor's dashboard, in logs on both sides, in any screenshot of the configuration, and in the browser history of whoever set it up. An unguessable URL raises the cost of finding it; it does nothing once found."
+      - text: "No — an unguessable URL is equivalent to a shared secret."
+        correct: false
+        why: "It is a secret that gets transmitted, logged and displayed as an ordinary configuration value, which is exactly what a secret must not be. A signature keeps the secret out of the request entirely."
+      - text: "Only if the webhook triggers something financial."
+        correct: false
+        why: "Financial actions raise the stakes but not the principle. A forged event that creates fake CRM records or sends messages to real customers is a serious incident too."
+      - text: "No, because HTTPS already prevents forged requests."
+        correct: false
+        why: "HTTPS stops a third party reading or altering traffic in transit. It says nothing about who is allowed to originate a request — anyone can make an HTTPS request to a public URL."
+  - id: raw-body-failure
+    type: debugging
+    prompt: "Your signature verification fails on every request, but the payload looks exactly right when you log it. What is the most likely cause?"
+    reviewConcept: raw-body-rule
+    options:
+      - text: "You are verifying against parsed-and-re-serialised JSON rather than the raw bytes."
+        correct: true
+        why: "Correct, and 'the payload looks right' is the clue — the data is identical while the bytes are not. Re-serialising changes whitespace and key order, so the hash differs. Capture the raw body before any parsing middleware touches it."
+      - text: "The signing secret is wrong."
+        correct: false
+        why: "Possible and worth checking in ten seconds, but a wrong secret is usually a configuration mistake caught immediately. The raw-body trap produces this exact symptom — correct-looking payload, failing signature — far more often."
+      - text: "The vendor is sending an unsupported hash algorithm."
+        correct: false
+        why: "Rare, and it would be documented. Check it after ruling out the raw body."
+      - text: "Clock skew between your server and the vendor."
+        correct: false
+        why: "That breaks the timestamp tolerance check, not the signature hash. It also produces intermittent failures rather than failing on every single request."
+  - id: slow-processing
+    type: architecture
+    prompt: "Your receiver enriches each event by calling two other APIs before responding. It works in testing. What happens in production, and what do you change?"
+    reviewConcept: ack-then-process
+    options:
+      - text: "One slow upstream call pushes the response past the vendor's timeout, so events start arriving twice. Acknowledge first, then enrich asynchronously."
+        correct: true
+        why: "Correct. The vendor cannot distinguish 'slow' from 'failed', so a slow response is treated as a failure and retried. Responding 200 the moment the signature verifies removes the coupling between their timeout and your downstream dependencies."
+      - text: "Nothing — vendors wait as long as necessary."
+        correct: false
+        why: "Timeouts are typically a few seconds. Stripe's is around ten; some are shorter. The response deadline is the vendor's, not yours."
+      - text: "The events queue up on the vendor's side and arrive in a burst later."
+        correct: false
+        why: "That describes a backpressure mechanism vendors do not generally offer. They retry on their own schedule, which is a different behaviour with different consequences."
+      - text: "You will get a 429 from the vendor for responding too slowly."
+        correct: false
+        why: "429 is rate limiting on requests you send. A slow response to an inbound webhook produces retries, not a rate-limit error."
+  - id: idempotency-implementation
+    type: multiple-choice
+    prompt: "Which is the most reliable way to make webhook processing idempotent?"
+    reviewConcept: webhook-idempotency
+    options:
+      - text: "Store the vendor's event id with a unique constraint, and treat a constraint violation as 'already processed'."
+        correct: true
+        why: "Correct. The database enforces it atomically, so two simultaneous deliveries of the same event cannot both pass. It also keeps working across restarts and multiple workers, which in-memory approaches do not."
+      - text: "Check whether a matching record already exists, and skip if it does."
+        correct: false
+        why: "Workable, and the right fallback when there is no event id to key on — but not the most reliable, which is what the question asks. Between the check and the write there is a window where a concurrent duplicate slips through, and concurrent delivery is exactly the case you are defending against."
+      - text: "Keep a set of processed event ids in memory."
+        correct: false
+        why: "Lost on restart, and not shared across workers. It appears to work in development, where there is one long-lived process, and fails quietly in production."
+      - text: "Rely on the vendor to deliver each event exactly once."
+        correct: false
+        why: "No vendor offers this. At-least-once is the standard guarantee precisely because exactly-once delivery over an unreliable network is not achievable."
+practicalTask:
+  title: "Build, secure and break a webhook receiver"
+  brief: "Stand up a webhook endpoint — an automation platform's webhook node is fine, or a small server if you prefer. Register it with a real vendor that signs its webhooks (Stripe's test mode is ideal and free). Then: receive a real event and capture the payload; implement signature verification and prove it works; deliberately send a forged request with a bad signature and confirm it is rejected; make processing idempotent and prove it by replaying the same event twice, showing only one record is created. Document what you built, what each protection defends against, and what you would still add before pointing a paying client at it."
+  estimatedMinutes: 150
+  rubric:
+    - "A real vendor event is received and the payload is captured"
+    - "Signature verification is implemented and a valid event is accepted"
+    - "A forged or tampered request is demonstrably rejected"
+    - "The same event delivered twice produces exactly one result, with evidence"
+    - "Explains what signature verification proves and what it does not"
+    - "Names at least one thing still missing before production use, honestly"
+  evidence:
+    - written
+    - screenshot
+    - repo-url
+  xp: 200
+  skillXp:
+    api: 55
+    automation: 60
+    security: 65
+labs:
+  - identify-exposed-api-key
+software:
+  - n8n
+  - postman
+resources:
+  - label: "Stripe — Verify webhook signatures"
+    url: "https://docs.stripe.com/webhooks/signatures"
+    type: docs
+    note: "The clearest explanation of signature verification anywhere, including the timestamp tolerance and why the raw body matters. Read it even if you never use Stripe."
+  - label: "OWASP — Server Side Request Forgery Prevention"
+    url: "https://cheatsheetseries.owasp.org/cheatsheets/Server_Side_Request_Forgery_Prevention_Cheat_Sheet.html"
+    type: article
+    note: "Relevant once your receiver starts fetching URLs found inside payloads — a natural next step that opens a real hole."
+---
+
+A webhook receiver is the first thing you will build that is exposed to the
+internet and acts on what it is told. That combination deserves care.
+
+The mechanics are simple: a URL that accepts a POST. Everything that follows is
+about making it safe and reliable.
+
+## Get a payload first
+
+Before writing anything, see what the vendor actually sends. Point the webhook
+at a throwaway URL — `webhook.site` gives you one instantly — trigger the event,
+and look.
+
+You will learn things the documentation does not tell you: the real field
+names, whether the event is nested under a `data` key, what the headers are
+called, whether the payload contains the full object or only an id you must
+then fetch. That last one matters a lot, because if the payload carries only an
+id, every webhook implies an API call and your rate-limit arithmetic changes.
+
+## Verify the signature
+
+**The URL is not a secret.** It appears in the vendor's dashboard, in logs on
+both sides, in screenshots of the configuration, and in the browser history of
+whoever set it up. Anyone who has it can send you anything.
+
+So the vendor signs each request. They take the raw body, combine it with a
+**signing secret** only the two of you know, hash it, and put the result in a
+header:
+
+```
+Stripe-Signature: t=1786982400,v1=5257a869e7ecebeda32affa62cdca3fa...
+```
+
+You recompute the same hash and compare. If it matches, the sender knew the
+secret and the body was not altered.
+
+Three details decide whether this actually protects you.
+
+**Use the raw bytes.** The signature is over exactly what was sent. If you parse
+the JSON and re-serialise it, whitespace and key order change and the hash no
+longer matches — even though the data is identical. Most frameworks parse the
+body before your handler runs, so you must explicitly capture the raw body. The
+symptom of getting this wrong is a signature failure on a payload that looks
+completely correct.
+
+**Check the timestamp.** A signature proves authenticity, not freshness. Without
+a timestamp check, a captured valid request can be replayed later — the same
+signed "payment succeeded" event sent again next week. Vendors include a
+timestamp in the signed data; reject anything outside a few minutes.
+
+**Compare in constant time.** Comparing two strings with `==` returns as soon as
+they differ, so how long the comparison takes leaks where the first difference
+was. That is enough to recover a secret one character at a time. Every language
+has a constant-time comparison function; use it.
+
+### What it proves, and what it does not
+
+Verification proves the event **came from the vendor** and **was not altered**.
+
+It does not prove the event is **new**. A legitimate, correctly signed event can
+be delivered twice by the vendor's own retry logic. Which brings us to the next
+two sections, both of which are still required.
+
+## Acknowledge fast, process after
+
+Vendors time out in a few seconds. If you have not responded by then, they
+assume failure and retry.
+
+So the tempting design is wrong:
+
+```
+receive → verify → call API A → call API B → write to CRM → respond 200
+```
+
+That works in testing, when everything is fast. In production, one slow
+downstream call pushes you past the timeout, the vendor retries, and every event
+starts arriving twice — while your logic is entirely correct.
+
+What you want:
+
+```
+receive → verify signature → store the event → respond 200
+                                             ↓
+                                        process separately
+```
+
+Respond as soon as the signature verifies. Do the work afterwards — a queue, a
+row in a table a worker picks up, or your platform's own async step.
+
+This decouples the vendor's timeout from your downstream dependencies, which is
+the whole point. It also means a failure *after* acknowledgement is now your
+problem alone: the vendor believes it was delivered and will not retry. So
+whatever processes the stored event needs the same visible-failure treatment as
+any other automation — retries, a dead-letter place, and a count someone sees.
+
+## Make it idempotent
+
+Because delivery is at-least-once, you must assume the same event will arrive
+twice, and make that harmless.
+
+The reliable way: store the vendor's **event id** with a unique constraint.
+
+```
+1. Extract event.id from the payload
+2. INSERT INTO processed_events (id) VALUES (...)
+3. If the insert violates the unique constraint → already handled, respond 200 and stop
+4. Otherwise → process it
+```
+
+The database enforces this atomically, so two simultaneous deliveries cannot
+both get through. A read-then-write check works too and is often enough, but it
+has a window between the check and the write where a concurrent duplicate can
+slip past.
+
+What does not work: an in-memory set. It is lost on restart and not shared
+between workers, so it behaves perfectly in development and fails quietly in
+production.
+
+If the vendor sends no event id, derive one from stable fields — the resource
+id plus the event type plus the timestamp — and be aware you are approximating.
+
+## Test the failure paths
+
+Before pointing a client at it, prove each protection:
+
+- **Valid event** → accepted and processed once.
+- **Tampered body** → rejected. Change one character and confirm.
+- **Bad signature** → rejected.
+- **Old timestamp** → rejected.
+- **Same event twice** → exactly one result.
+- **Malformed body** → rejected cleanly, not with a 500 and a stack trace.
+- **Slow downstream** → still responds 200 quickly.
+
+That list takes half an hour and is the difference between an endpoint you
+believe works and one you have seen work. It is also, almost verbatim, what the
+practical task asks for.
+
+## When the vendor does not sign
+
+Some vendors — usually smaller ones — offer no signature at all.
+
+Mitigate as best you can: an unguessable URL, plus a shared secret the vendor
+sends in a custom header, plus IP allowlisting if they publish their ranges.
+
+Then be explicit with the client, in writing, that this is weaker than a signed
+webhook and why. That sentence costs you nothing today and is the difference
+between a known accepted risk and a thing you failed to mention.
+
+## What to take away
+
+See a real payload before you build. Verify the signature against the raw
+bytes, in constant time, with a timestamp check. Acknowledge within a couple of
+seconds and process afterwards. Key idempotency on the vendor's event id with a
+unique constraint. And test the failures, not just the happy path — because the
+happy path is the one case you can be certain someone else will also hit.

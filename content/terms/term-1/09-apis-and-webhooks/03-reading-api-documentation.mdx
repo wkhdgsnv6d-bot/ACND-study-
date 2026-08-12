@@ -1,0 +1,256 @@
+---
+title: "Reading API Documentation"
+summary: "The skill that turns an unfamiliar API into a working call in twenty minutes — knowing which six things to find, in what order, and which parts of the documentation to ignore until later."
+duration: 30
+difficulty: foundation
+status: complete
+lastReviewed: "2026-08-12"
+objectives:
+  - "Find the six things you need from any API's documentation, in order"
+  - "Make a first successful call against an unfamiliar API without copying a full example"
+  - "Recognise when documentation is wrong or out of date, and confirm it against the live API"
+  - "Decide whether an API is fit for a client project before quoting the work"
+prerequisites:
+  - "term-1/apis-and-webhooks/rest-and-http-methods"
+xp: 15
+skillXp:
+  api: 30
+terminology:
+  - term: "Base URL"
+    definition: "The prefix every endpoint in an API shares, such as https://api.example.com/v2. Endpoints in the documentation are usually written relative to it."
+  - term: "Sandbox"
+    definition: "A separate environment with fake data, where mistakes cost nothing. Sometimes called a test or developer environment."
+  - term: "OpenAPI"
+    definition: "A machine-readable description of an API's endpoints, parameters and response shapes. Often published as a file you can import into a client tool."
+    plainEnglish: "The API's documentation in a format a program can read."
+  - term: "Reference vs guide"
+    definition: "A reference documents every endpoint exhaustively; a guide walks through one task end to end. Most APIs have both, and they are useful at different moments."
+commonMistakes:
+  - mistake: "Starting with the quickstart and copying the whole example."
+    correction: "Find the six things first, then make the smallest possible call yourself."
+    why: "The quickstart is designed to produce a working result fast, which is exactly what you want on your own project — and exactly what leaves you unable to debug on a client's, because you never learned which part was load-bearing."
+  - mistake: "Trusting the documentation over the live API."
+    correction: "When they disagree, the live API is right. Documentation drifts."
+    why: "Documentation looks authoritative and the response looks like a mistake you made, so the instinct is to keep adjusting your request rather than to suspect the docs."
+  - mistake: "Building against production data on the first call."
+    correction: "Find the sandbox before you find the endpoint."
+    why: "Sandboxes are usually documented somewhere other than the endpoint reference, so the path of least resistance points straight at live data."
+securityNote: "Documentation examples contain real-looking keys, and it is common for developers to paste a working example — key included — into a ticket, a chat, or a screenshot for a colleague. Treat every key you are given by a client as a credential to their business, because that is what it is. Put it in an environment variable the moment you receive it, and never let it reach a place with a search box."
+reviewConcepts:
+  - key: six-things
+    prompt: "What are the six things to find in any API's documentation before writing code?"
+    answer: "The base URL, how to authenticate, whether there is a sandbox, the endpoint for the thing you actually need, the shape of a successful response, and how errors are signalled. In that order — because authentication blocks everything, a sandbox decides whether mistakes are free, and the error shape determines how your integration behaves on the bad day rather than the good one."
+  - key: docs-vs-reality
+    prompt: "The documentation and the live API disagree. Which do you trust, and what do you do?"
+    answer: "The live API. Documentation is written once and drifts as the API ships; the response in front of you is what the server actually does today. Capture the real response, build against it, and note the discrepancy somewhere your future self will find it — a comment in the workflow or a line in the client's handover document. If it is a vendor with support, report it, but do not wait for a reply before building."
+  - key: api-fitness
+    prompt: "Before quoting an integration for a client, what in the documentation would make you raise the price or refuse?"
+    answer: "No sandbox, so every test touches live business data. Rate limits low enough that a normal sync cannot finish. No webhooks, forcing you to poll — which changes the cost model from event-driven to always-running. Errors returned as 200 with a message in the body, meaning ordinary error handling will not catch them. And no documented way to filter or paginate a large collection, which turns a simple sync into a full download every time."
+quiz:
+  - id: first-thing-to-find
+    type: scenario
+    prompt: "A client has asked you to sync their booking system with their CRM. You have twenty minutes with the booking system's documentation before the quote is due. What do you look for first?"
+    reviewConcept: six-things
+    options:
+      - text: "Whether it has a sandbox, how you authenticate, and whether there are webhooks or only polling."
+        correct: true
+        why: "Correct. These three decide whether the job is safe, possible and cheap. Endpoint details can wait — you can quote a job whose exact endpoints you have not read, but not one where you do not know if you can test without touching real bookings."
+      - text: "The full endpoint reference, so you know everything the API can do."
+        correct: false
+        why: "Exhaustive, slow, and mostly irrelevant to the decision in front of you. You need one endpoint to do this job; reading about forty others is time you did not have."
+      - text: "The code examples in your language, so you can estimate how much code to write."
+        correct: false
+        why: "Tempting, because it feels like the concrete part. But the risk in an integration is almost never the volume of code — it is authentication you cannot get, limits you cannot live within, or errors you cannot see."
+      - text: "Their pricing page, to see if API access costs extra."
+        correct: false
+        why: "Worth checking, and a real trap on some platforms — but it is a five-minute check later, not the thing to spend your first minutes on."
+  - id: docs-disagree
+    type: debugging
+    prompt: "The documentation says the response contains a `customer_name` field. The live API returns `customer` with `first` and `last` inside it. What do you do?"
+    reviewConcept: docs-vs-reality
+    code: |
+      {
+        "id": 8814,
+        "customer": { "first": "Dana", "last": "Okonkwo" },
+        "starts_at": "2026-09-01T09:30:00Z"
+      }
+    codeLang: json
+    options:
+      - text: "Build against the live shape, and write down that the documentation is wrong."
+        correct: true
+        why: "Correct. The server is the source of truth. Recording the discrepancy matters as much as handling it — the next person to touch this workflow will otherwise read the same docs and reach the same confusion."
+      - text: "Keep adjusting the request until the documented field appears."
+        correct: false
+        why: "This is the natural instinct and it can burn an afternoon. Nothing in the request changes the field names in the response; you are debugging your own code for the server's discrepancy."
+      - text: "Handle both shapes, in case the documented one is a newer version being rolled out."
+        correct: false
+        why: "Occasionally right — but only if you have evidence of a rollout, such as a version header or a changelog entry. Speculative dual-handling is untested code that runs in exactly the situation you never verified."
+      - text: "Contact support and pause the build until they reply."
+        correct: false
+        why: "Report it, certainly. Pausing is the error: you already have everything you need to build, and support replies on their schedule, not the client's."
+  - id: red-flag-in-docs
+    type: architecture
+    prompt: "You are reading the documentation for an API you would need to poll every five minutes for a client's automation. Which line is the biggest problem?"
+    reviewConcept: api-fitness
+    options:
+      - text: "\"Rate limit: 100 requests per day.\""
+        correct: true
+        why: "Correct. Five-minute polling is 288 requests a day before you have fetched anything useful. The limit does not merely constrain the design — it rules the approach out, and you need to know that before quoting, not after."
+      - text: "\"Responses are paginated at 50 records per page.\""
+        correct: false
+        why: "Entirely normal, and something you handle with a loop. Worth reading carefully, but not a problem."
+      - text: "\"All timestamps are returned in UTC.\""
+        correct: false
+        why: "This is good documentation. Ambiguous or local timestamps are the problem; explicit UTC is what you want."
+      - text: "\"Authentication is via a bearer token in the Authorization header.\""
+        correct: false
+        why: "The most ordinary authentication scheme there is, and one of the simpler ones to implement."
+practicalTask:
+  title: "Twenty-minute API assessment"
+  brief: "Pick an API you have never used, ideally one a small business might actually run — a booking system, an accounting package, a form builder. Give yourself twenty minutes with its documentation and produce a one-page assessment covering the six things: base URL, authentication, sandbox availability, the endpoint you would need, the shape of a success response, and how errors are signalled. Finish with a plain recommendation: would you be comfortable quoting an integration against this API, and what would you want to confirm first?"
+  estimatedMinutes: 40
+  rubric:
+    - "Names the API and the specific integration scenario assumed"
+    - "Answers all six questions with specifics, quoting URLs, header names and field names rather than describing them"
+    - "States explicitly whether a sandbox exists, and what the plan is if it does not"
+    - "Ends with a clear go / no-go / go-with-caveats recommendation and at least one named risk"
+  evidence:
+    - written
+  xp: 90
+  skillXp:
+    api: 40
+    sales: 15
+software:
+  - postman
+resources:
+  - label: "Stripe API reference"
+    url: "https://docs.stripe.com/api"
+    type: docs
+    note: "Widely regarded as the best API documentation there is. Read it as a benchmark for what good looks like, even if you never integrate Stripe."
+  - label: "OpenAPI Specification"
+    url: "https://spec.openapis.org/oas/latest.html"
+    type: spec
+    note: "If an API publishes an OpenAPI file, you can import it into a client and get every endpoint without reading prose."
+---
+
+You will spend more of your working life reading other people's API
+documentation than writing your own code. It is worth being fast at it.
+
+Fast does not mean reading more. It means knowing what to look for, finding
+those things in order, and deliberately ignoring the rest until you need it.
+
+## The six things
+
+Before you write a line of code against an unfamiliar API, find these. In this
+order, because each one can stop the project.
+
+**1. The base URL.** Every endpoint hangs off it. It usually contains a version
+(`/v2`, `/2024-10-01`), and that version is a promise: it is the vendor telling
+you what they will not change without warning.
+
+**2. How you authenticate.** An API key in a header? A bearer token? OAuth with
+a redirect flow? This is the most common place a two-hour job becomes a two-day
+one, because OAuth means a consent screen, a redirect URL, and often an
+application review by the vendor. Find out now, not on the day you promised
+delivery.
+
+**3. Whether there is a sandbox.** A test environment with fake data means your
+mistakes cost nothing. No sandbox means your first request touches a real
+business's real records. That changes how you work — and it changes what you
+should charge, because careful is slower.
+
+**4. The endpoint you actually need.** Singular. Not the whole reference: the
+one operation this job requires. You can read the other forty later, when you
+have a reason.
+
+**5. The shape of a successful response.** Find a real example. Note the field
+names, the nesting, and the format of dates and money. Money in particular:
+`19.99`, `1999` and `"19.99"` are three different things and only one of them
+is safe to do arithmetic on.
+
+**6. How errors are signalled.** Proper status codes, or `200 OK` with an
+`error` key in the body? This determines whether your integration notices
+failure at all. An API that returns `200` for failures will sail straight
+through error handling that checks the status code, and the client will find
+out before you do.
+
+Six things. Twenty minutes on a well-documented API, an hour on a bad one. And
+at the end of it you can quote the work honestly.
+
+## Reference, guide, quickstart
+
+Most documentation comes in three forms, useful at different moments.
+
+The **quickstart** gets you a working call in five minutes by giving you
+everything at once. It is genuinely useful — but copy it wholesale and you will
+not know which part was load-bearing when it stops working on a client's
+account. Read it, then retype the call yourself with only the pieces you
+understand.
+
+The **guide** walks through a complete task: "syncing customers", "handling
+refunds". This is where the vendor tells you the things the reference cannot —
+which endpoints go together, what order to call them in, what the gotcha is.
+Guides are usually the highest-value pages and the least read.
+
+The **reference** documents every endpoint exhaustively. Do not read it. Search
+it, when you have a specific question.
+
+## Make the smallest possible call
+
+Your first request against a new API should do as close to nothing as
+possible: fetch one record, or list a collection with a limit of one.
+
+```
+GET /v2/contacts?limit=1
+Authorization: Bearer <token>
+```
+
+If that works, you have proven the base URL, your credentials, your network
+path and your client tool all at once. Every subsequent problem is about the
+specific endpoint, not the setup — and that separation is most of debugging.
+
+If it fails, you have exactly one thing to fix, which is the point.
+
+## When the documentation is wrong
+
+It will be. Documentation is written once and the API keeps shipping.
+
+The rule is simple: **the live API is right.** If the docs promise a
+`customer_name` field and the response contains a `customer` object, build
+against the object.
+
+What matters as much as handling it is *writing it down*. A comment in the
+workflow, a line in the handover document — anywhere the next person will find
+it. Otherwise they read the same documentation, reach the same confusion, and
+conclude your integration is wrong.
+
+## Reading for fitness, not just for facts
+
+There is a second way to read documentation, and it is the one that protects
+your margin: reading to decide whether to take the job.
+
+Things that should make you slow down and price differently:
+
+- **No sandbox.** Every test touches live data. Slower, riskier, and you may
+  need the client present.
+- **Restrictive rate limits.** Do the arithmetic before quoting. A limit of
+  100 requests a day cannot support five-minute polling — that is 288 requests
+  before you have done anything useful.
+- **No webhooks.** You will have to poll, which means something running
+  constantly rather than reacting to events. That is a different cost
+  structure, and a usage cost the client should be told about.
+- **Errors returned as `200`.** Your monitoring will not see failures. Build
+  the check yourself, and say so in the quote.
+- **No filtering or pagination on a large collection.** A "simple sync" becomes
+  downloading everything on every run.
+
+None of these are reasons to refuse. They are reasons to quote the real job
+instead of the imagined one — which is the difference between a project that
+makes money and one that quietly eats a fortnight.
+
+## What to take away
+
+Six things, in order, before any code. The smallest possible first call. The
+live API over the documentation, every time. And read at least once with your
+commercial hat on, because the most expensive integration problems are visible
+in the documentation before you have written anything.

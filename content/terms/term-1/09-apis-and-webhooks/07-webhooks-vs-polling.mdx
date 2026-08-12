@@ -1,0 +1,268 @@
+---
+title: "Webhooks vs Polling"
+summary: "The two ways to find out that something happened — asking repeatedly, or being told — and why the choice changes the latency, the cost and the failure modes of everything you build."
+duration: 30
+difficulty: foundation
+status: complete
+lastReviewed: "2026-08-12"
+objectives:
+  - "Explain the difference between polling and webhooks without using either word"
+  - "Choose correctly between them for a given client requirement"
+  - "Describe the failure modes each one has that the other does not"
+  - "Explain the cost difference to a client in terms they care about"
+prerequisites:
+  - "term-1/apis-and-webhooks/rate-limits-and-pagination"
+xp: 15
+skillXp:
+  api: 30
+  automation: 35
+terminology:
+  - term: "Polling"
+    definition: "Repeatedly asking an API whether anything has changed."
+    plainEnglish: "Checking the letterbox every ten minutes."
+  - term: "Webhook"
+    definition: "An HTTP request the vendor sends to a URL you provide, when an event happens."
+    plainEnglish: "Being telephoned when the post arrives."
+  - term: "Event"
+    definition: "A thing that happened, at a moment in time — a deal closed, a payment failed, a form submitted."
+  - term: "Latency"
+    definition: "The delay between something happening and your system knowing about it."
+  - term: "Endpoint"
+    definition: "In webhook terms, the publicly reachable URL you give the vendor for them to call."
+  - term: "At-least-once delivery"
+    definition: "A guarantee that an event will be delivered, with the caveat that it may be delivered more than once."
+commonMistakes:
+  - mistake: "Choosing polling because webhooks need a public URL and that seems hard."
+    correction: "Automation platforms give you a webhook URL for free. The difficulty is usually imagined."
+    why: "Webhooks sound like infrastructure — a server, a domain, hosting — and that framing survives even after you are using a platform that hands you a URL in one click."
+  - mistake: "Choosing webhooks and assuming every event will arrive exactly once."
+    correction: "Assume at-least-once. Design so a duplicate is harmless."
+    why: "In testing every event arrives once, so the duplicate case is never observed until production, when a vendor retry after a timeout creates a second record."
+  - mistake: "Polling frequently to reduce latency, without checking the rate limit."
+    correction: "Do the arithmetic. One-minute polling is 1,440 requests a day before you fetch anything."
+    why: "The schedule field accepts any number, so the constraint is invisible at the moment of choosing."
+  - mistake: "Treating a missed webhook as impossible."
+    correction: "Webhooks get missed — outages, deploys, bad responses. Have a reconciliation path."
+    why: "Delivery feels guaranteed because it is reliable most of the time, and the failures are silent by nature: nothing arrives, so nothing alerts."
+securityNote: "A webhook endpoint is a publicly reachable URL that accepts data and acts on it. Anyone who learns the URL can send it anything, and the URL will appear in vendor dashboards, logs and screenshots. Never treat an incoming webhook as trusted merely because it reached the right address — verify the signature, which is the next lesson, and never let an unverified payload trigger anything that moves money or deletes data."
+reviewConcepts:
+  - key: polling-vs-webhooks
+    prompt: "Explain the difference between polling and webhooks, and the trade-off between them."
+    answer: "Polling means repeatedly asking whether anything changed; webhooks mean the vendor calls a URL of yours when something happens. Polling costs requests continuously whether or not anything happened, and its latency is at best the polling interval. Webhooks cost nothing while idle and arrive within seconds, but require a publicly reachable endpoint, and the vendor decides when to send — so you must handle duplicates, out-of-order arrival and events that never come."
+  - key: choosing-mechanism
+    prompt: "How do you choose between polling and a webhook for a client requirement?"
+    answer: "Prefer a webhook when the vendor offers one for the event you need and the requirement is time-sensitive — anything a person or customer is waiting on. Poll when the vendor has no webhook for that event, when you need periodic reconciliation rather than reaction, or when the source is a system you cannot configure. In practice the strongest design is often both: a webhook for immediate reaction, plus an infrequent poll to catch anything the webhook missed."
+  - key: delivery-guarantees
+    prompt: "What delivery guarantees do webhooks actually give you, and what does that mean for your design?"
+    answer: "At-least-once, at best. The vendor retries when your endpoint fails or is slow, so the same event can arrive twice — and a request that timed out on their side may already have been processed on yours. Events can also arrive out of order, and some never arrive at all if your endpoint was down beyond the retry window. So processing must be idempotent, keyed on the event id, order must not be assumed, and there must be some reconciliation path for what was missed."
+quiz:
+  - id: choose-mechanism
+    type: scenario
+    prompt: "A client wants their team notified in chat within seconds when a high-value deal closes in their CRM. The CRM offers a `deal.updated` webhook. What do you build?"
+    reviewConcept: choosing-mechanism
+    options:
+      - text: "A webhook subscription, filtering for closed deals above the value threshold after receiving the event."
+        correct: true
+        why: "Correct. The requirement is explicitly time-sensitive and the vendor offers the event, so a webhook gives seconds of latency at no idle cost. Filtering after receipt is normal — most vendors send all updates of a type and leave the narrowing to you."
+      - text: "Poll the deals endpoint every minute and compare against the previous run."
+        correct: false
+        why: "It works, but it costs 1,440 requests a day to catch a handful of events, gives up to a minute of latency against a 'within seconds' requirement, and needs you to store previous state to detect the change. Strictly worse when a webhook exists."
+      - text: "Poll every five seconds to meet the latency requirement."
+        correct: false
+        why: "17,280 requests a day, almost certainly breaching the rate limit and consuming a quota shared with the client's other integrations. This is the design that breaks systems you did not build."
+      - text: "A webhook, with no filtering, posting every deal update to chat."
+        correct: false
+        why: "Right mechanism, wrong result. The team gets a notification every time anyone edits any deal, they mute the channel within a day, and the alert that mattered is lost with the rest."
+  - id: duplicate-webhook
+    type: debugging
+    prompt: "A client reports occasional duplicate rows from your webhook-driven automation — perhaps one in two hundred. The workflow has no bug you can find. What is happening?"
+    reviewConcept: delivery-guarantees
+    options:
+      - text: "The vendor is retrying deliveries your endpoint was slow to acknowledge, so the same event arrives twice."
+        correct: true
+        why: "Correct, and it is the classic symptom: rare, non-reproducible, no bug in the logic. Your endpoint processed the event but responded after the vendor's timeout, so they retried an event that had already succeeded. The fix is idempotency keyed on the event id, not a change to the logic."
+      - text: "The client is submitting the form twice."
+        correct: false
+        why: "Worth checking, but it would not produce a rate as consistent as one in two hundred, and the vendor's delivery log will settle it in a minute — it shows the retries explicitly."
+      - text: "A race condition in the automation platform."
+        correct: false
+        why: "Possible in principle and much rarer in practice than vendor retries. Suspect the delivery guarantee before suspecting the platform."
+      - text: "The webhook is registered twice with the vendor."
+        correct: false
+        why: "That would duplicate every event, not one in two hundred. It is worth checking — and it is the cause when the rate is 100%."
+  - id: missed-events
+    type: architecture
+    prompt: "Your webhook endpoint was down for forty minutes during a deploy. The vendor retried for fifteen minutes and gave up. What is the right design response?"
+    reviewConcept: delivery-guarantees
+    options:
+      - text: "Add a periodic reconciliation poll that fetches anything changed since the last processed event, independent of webhooks."
+        correct: true
+        why: "Correct. Webhooks are the fast path and reconciliation is the safety net. An hourly or nightly poll for anything modified since the last successful processing catches whatever was missed, regardless of the reason, without anyone having to notice."
+      - text: "Ask the vendor to redeliver the missed events."
+        correct: false
+        why: "Do this for the immediate gap if the vendor supports it — many do. But it is a manual recovery, not a design, and it depends on someone realising events were missed at all."
+      - text: "Increase the vendor's retry window in the dashboard."
+        correct: false
+        why: "Rarely configurable, and it only extends the window rather than removing the failure mode. A longer outage still loses events."
+      - text: "Deploy without downtime so the endpoint is never unavailable."
+        correct: false
+        why: "Worth doing, and it does not solve the problem. Networks fail, vendors have incidents, and your endpoint can return a 500 for reasons unrelated to deploys."
+  - id: explain-to-client
+    type: client-simulation
+    prompt: "A client asks why the booking sync you built runs 'all the time' and costs more to run than the one their previous developer built, which 'only checked twice a day'. Explain the trade-off."
+    reviewConcept: polling-vs-webhooks
+    rubric:
+      - "Explains polling and webhooks in plain language, without jargon"
+      - "Connects the mechanism to something the client experiences — delay, missed bookings"
+      - "Is honest about the cost rather than dismissing the question"
+      - "Gives them a real choice rather than defending the decision"
+    modelAnswer: "The old one checked twice a day, which means a booking made at nine in the morning might not reach your system until the evening. If someone rang to change it in between, your team would have no record of it. What I have built reacts when the booking happens — the booking system tells us within a few seconds, rather than us asking twice a day. That is why it appears to be 'always on': it is listening rather than checking. On cost, the honest answer is that most of what you are seeing is not this automation — it is the platform's base fee. The listening itself costs almost nothing when nothing is happening. If the delay genuinely does not matter for a particular thing, we can move it to a scheduled check and save that cost; I would just want us to decide that deliberately for each piece, rather than accept a half-day delay everywhere by default."
+    points: 5
+practicalTask:
+  title: "Compare both mechanisms against the same event"
+  brief: "Pick a system that supports both webhooks and polling — most form builders, CRMs and payment platforms do. Set up both: a webhook that fires on an event, and a scheduled poll that detects the same event. Trigger the event and measure how long each takes to notice. Then write up the comparison: measured latency for each, requests consumed per day by each, what happens to each if your endpoint is down for an hour, and which you would deploy for a client and why."
+  estimatedMinutes: 90
+  rubric:
+    - "Both mechanisms are working and evidenced"
+    - "Reports measured latency for each, not estimated"
+    - "Calculates daily request consumption for the polling version"
+    - "Describes what each does when the receiving end is unavailable"
+    - "Makes a recommendation with a stated reason, and names the trade-off accepted"
+  evidence:
+    - screenshot
+    - written
+  xp: 130
+  skillXp:
+    api: 40
+    automation: 55
+software:
+  - n8n
+resources:
+  - label: "Stripe — Webhooks overview"
+    url: "https://docs.stripe.com/webhooks"
+    type: docs
+    note: "The reference implementation. Read the sections on retries and idempotency — they describe the failure modes every vendor shares, whether or not they document them."
+  - label: "webhook.site"
+    url: "https://webhook.site"
+    type: tool
+    note: "Gives you a throwaway URL that shows exactly what a vendor sends. The fastest way to see a real payload before writing anything."
+---
+
+Something happened in one system. Another system needs to know. There are
+exactly two ways to arrange that, and the choice shapes the latency, the cost
+and the failure modes of everything downstream.
+
+## Asking, versus being told
+
+**Polling** is checking the letterbox every ten minutes. You ask the API "has
+anything changed?", it usually says no, and you ask again shortly.
+
+**Webhooks** are being telephoned when the post arrives. You give the vendor a
+URL, and they send a request to it when the event happens.
+
+That is the whole distinction. Everything below follows from it.
+
+## What polling costs you
+
+Polling burns requests whether or not anything happened. Every five minutes is
+288 requests a day; every minute is 1,440. Almost all of them return "nothing
+new".
+
+It also sets a floor on latency. Poll every fifteen minutes and your average
+delay is seven and a half minutes, worst case fifteen. You cannot do better
+without polling more often, and polling more often costs more requests — the
+trade-off is direct and unavoidable.
+
+Polling also requires you to **detect** the change yourself. The API gives you
+the current state; working out what is new means either storing what you saw
+last time, or relying on an `updated_since` filter if the vendor offers one.
+That is state you now have to keep somewhere durable, and get right.
+
+What polling gives you in return is genuine and often undersold:
+
+- **No public endpoint needed.** Your automation reaches out; nothing reaches
+  in.
+- **You control the timing.** It runs when you say, at a rate you choose.
+- **It works with anything.** Every API supports being read. Not every API
+  supports webhooks.
+- **It is self-healing.** Miss a run, and the next one still sees the current
+  state. There is nothing to lose.
+
+## What webhooks cost you
+
+Webhooks are near-instant and cost nothing while idle, which makes them the
+obvious choice for anything a person is waiting on.
+
+The cost is that **you no longer control when data arrives**, and that hands
+you three failure modes polling does not have.
+
+**Duplicates.** Delivery is at-least-once, not exactly-once. If your endpoint
+is slow to respond, the vendor assumes failure and retries — even though you
+already processed it. This shows up as rare, unreproducible duplicate records,
+maybe one in a few hundred, with no bug in your logic. The fix is not in the
+logic: it is to record the event id you have already handled and ignore a
+repeat.
+
+**Out of order.** Two events fired half a second apart can arrive in either
+order. If you process "deal updated to Closed Won" before "deal updated to
+Negotiation", you end up with the wrong state and no error anywhere.
+
+**Missed entirely.** If your endpoint is down beyond the vendor's retry window,
+the event is gone. Silently — nothing arrives, so nothing alerts. This is the
+one that gets discovered by the client.
+
+And a webhook endpoint is a **publicly reachable URL that accepts data and acts
+on it**. That is a security surface, and it is what the next lesson is about.
+
+## Choosing
+
+Use a **webhook** when:
+
+- The vendor offers one for the event you need, and
+- The requirement is time-sensitive — a customer or a colleague is waiting.
+
+Use **polling** when:
+
+- The vendor has no webhook for that event, or
+- You need periodic reconciliation rather than reaction, or
+- You cannot configure the source system at all.
+
+And then, for anything that matters:
+
+## Use both
+
+The strongest design for a client system is almost always a webhook for speed
+plus an infrequent poll for safety.
+
+The webhook handles the normal case in seconds. A reconciliation poll — hourly,
+or nightly — asks "anything changed since the last thing I processed?" and
+catches whatever the webhook missed, whether the cause was a deploy, an outage,
+a vendor incident or a bug you have not found yet.
+
+This is not belt and braces. It is the difference between a system whose
+failures are self-correcting and one whose failures are permanent and invisible.
+The poll is cheap precisely because it is infrequent — you are not using it for
+latency, only for completeness.
+
+## Talking to clients about it
+
+Clients do not ask about mechanisms. They ask why something is slow, or why the
+new automation costs more to run than the old one.
+
+The honest framing: *the old one checked twice a day, so a booking made at nine
+in the morning might not reach you until evening. This one is told when it
+happens.* Then be straight about the cost, including that most of it is usually
+the platform's base fee rather than the traffic.
+
+And offer the real choice: if a half-day delay genuinely does not matter for
+some particular thing, move that one to a schedule and save the cost. What you
+are avoiding is accepting a half-day delay everywhere by default, because nobody
+made a decision.
+
+## What to take away
+
+Polling asks; webhooks tell. Polling costs requests continuously and has a
+latency floor you cannot beat. Webhooks are fast and free while idle, and give
+you duplicates, reordering and silent loss to design around. Assume
+at-least-once, key your processing on the event id, and put a cheap
+reconciliation poll behind anything a client depends on.

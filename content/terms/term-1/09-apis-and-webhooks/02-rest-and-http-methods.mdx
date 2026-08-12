@@ -1,0 +1,275 @@
+---
+title: "REST and HTTP Methods"
+summary: "Why almost every API you will meet is shaped the same way — resources addressed by URL, acted on by a handful of verbs — and how choosing the wrong verb creates bugs that only appear under retry."
+duration: 35
+difficulty: foundation
+status: complete
+lastReviewed: "2026-08-12"
+objectives:
+  - "Explain what makes an API RESTful, and why the shape is so common"
+  - "Choose the correct HTTP method for an operation and justify why the others are wrong"
+  - "Predict what a given method and URL will do before you send it"
+  - "Explain idempotency in plain language and say which methods have it"
+  - "Recognise when an API is not really REST, and adjust your expectations"
+prerequisites:
+  - "term-1/apis-and-webhooks/what-is-an-api"
+xp: 15
+skillXp:
+  api: 35
+terminology:
+  - term: "REST"
+    definition: "An architectural style in which an API exposes resources at URLs and acts on them with standard HTTP methods, carrying no client state between requests."
+    plainEnglish: "Nouns in the address, verbs in the method."
+  - term: "Resource"
+    definition: "A thing the API knows about — a contact, a deal, an invoice — identified by a URL."
+  - term: "Collection"
+    definition: "A resource representing many of something, such as /contacts, as opposed to one of something, such as /contacts/42."
+  - term: "Idempotent"
+    definition: "An operation that produces the same end state whether it runs once or five times."
+    plainEnglish: "Safe to retry."
+  - term: "Stateless"
+    definition: "Every request carries everything the server needs to handle it. The server remembers nothing about you between calls."
+  - term: "Path parameter"
+    definition: "A value embedded in the URL that identifies which resource you mean, such as the 42 in /contacts/42."
+  - term: "Query parameter"
+    definition: "A key-value pair after the ? in a URL, used to filter, sort or paginate rather than to identify a resource."
+commonMistakes:
+  - mistake: "Using POST for everything, because it works."
+    correction: "POST creates. Use PATCH to change part of something, PUT to replace it, DELETE to remove it."
+    why: "POST does work — it is the least constrained method, so nothing stops you. The cost only appears later, when a retry creates a second copy of something that should have been updated."
+  - mistake: "Assuming PUT and PATCH are interchangeable."
+    correction: "PUT replaces the whole resource; fields you omit are typically cleared. PATCH changes only what you send."
+    why: "Both 'update' the record in casual language, and many APIs are forgiving enough that the difference does not bite until the day it silently wipes a field nobody was looking at."
+  - mistake: "Treating the URL as a description of an action, like /createContact."
+    correction: "The URL names the thing; the method names the action. POST /contacts, not POST /createContact."
+    why: "It reads naturally in English, and plenty of older APIs did exactly this — so the habit is learned from real examples rather than invented."
+securityNote: "GET requests end up in places you did not choose — browser history, server access logs, proxy logs, the Referer header sent to third parties. Never put an API key, password or personal data in a query string. Credentials belong in a header, and anything sensitive belongs in the body of a POST."
+reviewConcepts:
+  - key: rest-shape
+    prompt: "What makes an API RESTful, and why is that shape so common?"
+    answer: "Resources are addressed by URL and acted on with standard HTTP methods, and the server keeps no client state between requests. It is common because it means one set of rules covers every API: once you can read the pattern — a noun in the path, a verb in the method — an unfamiliar API is only unfamiliar in its nouns. Statelessness also makes servers easy to scale, since any server can handle any request."
+  - key: http-method-choice
+    prompt: "Which HTTP method for: fetching a contact, creating one, changing its email, removing it — and what is the reasoning?"
+    answer: "GET to fetch, POST to create, PATCH to change the email, DELETE to remove. The reasoning is not convention for its own sake: GET is safe (changes nothing) so it can be retried or cached freely, POST is the only one of the four that is not idempotent because each call creates a new thing, PATCH changes just the field you send while PUT would replace the whole record, and DELETE is idempotent because deleting an already-deleted thing leaves the same end state."
+  - key: idempotency
+    prompt: "What does idempotent mean, which methods are, and why does an automation builder care?"
+    answer: "An operation is idempotent if running it five times leaves the same end state as running it once. GET, PUT and DELETE are; POST is not. It matters because networks fail halfway: a request can succeed on the server while the response is lost, so your automation retries. If that call was a PATCH or a DELETE, the retry is harmless. If it was a POST, you have just created a second contact — and the client sees a duplicate they did not create."
+quiz:
+  - id: method-for-partial-update
+    type: scenario
+    prompt: "A contact's email address has changed. The CRM's API exposes /contacts/{id}. Which request do you send?"
+    reviewConcept: http-method-choice
+    options:
+      - text: "PATCH /contacts/42 with a body containing only the email field."
+        correct: true
+        why: "Correct. PATCH applies a partial change: the fields you send are updated and everything else is left alone. It is also idempotent, so a retry after a timeout cannot do damage."
+      - text: "PUT /contacts/42 with a body containing only the email field."
+        correct: false
+        why: "PUT replaces the resource. Sending only the email is asking the server to make the contact consist of just that — on a strict API you will clear the name, phone and company. This is the single most expensive way to learn the PUT/PATCH distinction."
+      - text: "POST /contacts with a body containing the id and the new email."
+        correct: false
+        why: "POST to a collection creates a new member of it. On a well-behaved API this makes a second contact; on a forgiving one it may update the first, which is worse, because the habit survives until it meets an API that does the obvious thing."
+      - text: "POST /contacts/42/updateEmail with the new address."
+        correct: false
+        why: "This is action-in-the-URL rather than resource-in-the-URL. Some real APIs are built this way and you will have to use them, but it is not REST, and it gives up the retry safety that PATCH would have given you."
+  - id: idempotent-set
+    type: multi-select
+    prompt: "Which of these can be safely retried after a network timeout, assuming a conventional REST API?"
+    reviewConcept: idempotency
+    options:
+      - text: "GET /invoices/981"
+        correct: true
+        why: "GET is safe: it changes nothing, so any number of retries leaves the same state."
+      - text: "DELETE /invoices/981"
+        correct: true
+        why: "Idempotent. The first call deletes it; later calls find nothing to delete. The second response may be a 404 rather than a 204, but the end state is identical — deleted."
+      - text: "PUT /invoices/981 with the full invoice body"
+        correct: true
+        why: "Idempotent. Each call sets the resource to exactly the state in your body, so the fifth call leaves it the same as the first."
+      - text: "POST /invoices with a new invoice body"
+        correct: false
+        why: "Not idempotent — this is the one to watch. Each call creates another invoice. If the response is lost and your automation retries, the client gets billed twice, and you find out from them rather than from your logs."
+  - id: query-vs-path
+    type: multiple-choice
+    prompt: "You want the contacts belonging to company 17, twenty at a time. Which URL is shaped correctly?"
+    reviewConcept: rest-shape
+    options:
+      - text: "GET /contacts?company_id=17&limit=20"
+        correct: true
+        why: "Correct. The path names the collection you want; query parameters filter and paginate it. This is the standard shape and most APIs will accept something very close to it."
+      - text: "GET /contacts/17/20"
+        correct: false
+        why: "Path segments identify resources, so this reads as 'resource 20 inside resource 17 inside contacts' — which is not what you meant. Positional values in a path are also unreadable six months later."
+      - text: "GET /getContactsByCompany?id=17"
+        correct: false
+        why: "Action-in-the-URL again. It will work if the API is built that way, but it means every new operation needs a new endpoint name to memorise rather than a new combination of a verb and a noun."
+  - id: rest-in-your-own-words
+    type: short-answer
+    prompt: "A client's developer says their API is 'RESTful'. In two or three sentences, say what that tells you before you have read a single page of their documentation."
+    reviewConcept: rest-shape
+    rubric:
+      - "Mentions resources addressed by URL"
+      - "Mentions standard HTTP methods carrying the action"
+      - "Draws a practical consequence — you can predict the endpoints, or you know how to try"
+    modelAnswer: "It tells me their data is exposed as resources at URLs, and that the action is in the HTTP method rather than the URL — so I can guess that a list of contacts is at /contacts, one contact at /contacts/{id}, and that I create with POST and update with PATCH. I still have to check authentication, error shapes and pagination, but I can probably make my first successful call from the pattern alone. It also tells me the API is stateless, so every request needs to carry its own credentials."
+    points: 3
+practicalTask:
+  title: "Map four operations onto a real API"
+  brief: "Pick any API with public documentation — Stripe, HubSpot, GitHub and Airtable all work well. Find the endpoint for one resource type, then write down the exact method and URL you would use to: list that resource, fetch a single one, create one, and change a single field on one. For each, write one sentence on what would happen if the request were sent twice. You do not need credentials or a working call — this is about reading documentation and predicting behaviour."
+  estimatedMinutes: 30
+  rubric:
+    - "Names the API and the resource chosen"
+    - "Gives four concrete method-and-URL pairs, not descriptions"
+    - "Correctly identifies which of the four is not idempotent, and why"
+    - "Notes at least one place the API departs from textbook REST, or states plainly that it does not"
+  evidence:
+    - written
+  xp: 90
+  skillXp:
+    api: 45
+labs:
+  - map-json-payload
+software:
+  - postman
+resources:
+  - label: "MDN — HTTP request methods"
+    url: "https://developer.mozilla.org/en-US/docs/Web/HTTP/Methods"
+    type: docs
+    note: "The reference to keep open. Short, accurate, and it says which methods are safe and idempotent."
+  - label: "RFC 9110 — HTTP Semantics, section 9"
+    url: "https://www.rfc-editor.org/rfc/rfc9110.html#name-methods"
+    type: spec
+    note: "The actual specification. Worth reading once so you know where the rules come from."
+---
+
+The first API you meet will feel like its own thing to learn. So will the
+second. Somewhere around the fourth, you notice they are all the same shape, and
+from then on a new API is a few hours of work rather than a few days.
+
+That shape has a name.
+
+## Nouns in the address, verbs in the method
+
+REST is an architectural style, and the part that matters day to day is a
+single idea: **the URL names a thing, and the HTTP method says what to do
+to it.**
+
+```
+GET    /contacts        list the contacts
+POST   /contacts        create a contact
+GET    /contacts/42     fetch contact 42
+PATCH  /contacts/42     change part of contact 42
+PUT    /contacts/42     replace contact 42
+DELETE /contacts/42     delete contact 42
+```
+
+Six operations, one noun. The alternative — which plenty of older APIs use —
+puts the action in the URL: `/getContact`, `/createContact`, `/updateContact`,
+`/deleteContact`. That works, but every operation is a new name you have to
+look up, and there is no pattern to generalise from.
+
+With REST, once you have seen `/contacts` you can make a confident guess at
+`/companies`, `/deals` and `/invoices` without opening the documentation again.
+
+## The methods, and when each is wrong
+
+**GET** retrieves. It must not change anything — that is what "safe" means in
+HTTP — which is why browsers and proxies feel free to cache it and why a
+crawler following links cannot damage your data. If you ever find yourself
+building an endpoint where `GET /orders/42/cancel` cancels an order, you have
+built something a search engine's crawler can quietly destroy.
+
+**POST** creates. It is the one method in common use that is **not**
+idempotent: each call makes another thing. Sending `POST /contacts` twice gives
+you two contacts.
+
+**PUT** replaces the entire resource with what you send. Fields you leave out
+are, on a strict API, cleared. It is idempotent — sending the same body five
+times leaves exactly the state that body describes.
+
+**PATCH** changes only what you send. It is the right choice for the
+overwhelmingly common case of "one field changed", and it is the method people
+most often skip because POST appeared to work.
+
+**DELETE** removes. It is idempotent in the sense that matters: after the first
+call the thing is gone, and after the fifth it is still gone. The later
+responses may be `404` rather than `204`, but the end state does not change,
+which is the actual definition.
+
+## Idempotency is a retry question
+
+Idempotency sounds like a word from a specification. It is really a question
+about failure, and it is the reason this lesson is in a module about
+automation.
+
+Here is the situation you will meet, probably within your first month of
+building automations for someone else. Your workflow sends a request. The
+server receives it, does the work, and starts sending the response. Somewhere
+between the two, the connection drops. Your automation platform sees a timeout.
+
+It does not know whether the work happened.
+
+The only sane default is to retry — and most platforms will do it for you,
+often without asking. So the question becomes: **what happens if this request
+runs twice?**
+
+- `GET` — nothing. Retry freely.
+- `PATCH /contacts/42 {"email": "..."}` — the email is set to the same value
+  again. Harmless.
+- `DELETE /contacts/42` — already gone. Harmless.
+- `POST /invoices {...}` — **the client is invoiced twice.**
+
+That last line is the one that reaches the client before it reaches you. It is
+also why serious APIs offer an *idempotency key*: a value you generate and send
+with a POST, which the server remembers, so a retry with the same key returns
+the original result instead of creating a second thing. Stripe's is the
+best-known implementation. If an API you are integrating offers one and your
+automation creates anything financial, use it.
+
+## Path parameters and query parameters
+
+Two kinds of value end up in a URL, and they mean different things.
+
+A **path parameter** identifies which resource you mean. The `42` in
+`/contacts/42` is not a filter — it is part of the address.
+
+A **query parameter** modifies what you get back from a collection: filtering,
+sorting, pagination, choosing fields.
+
+```
+GET /contacts?company_id=17&status=active&limit=20&sort=-created_at
+```
+
+The rule of thumb: if removing the value would leave you asking for a
+*different thing*, it belongs in the path. If it would leave you asking for
+*more of the same thing*, it belongs in the query string.
+
+This is also a security boundary, which is why the security note above matters
+more than it looks. Query strings are logged — by the server, by proxies, by
+your own monitoring — and they appear in browser history. A key in a query
+string is a key in a log file that somebody's ops team can read.
+
+## When it is not really REST
+
+Plenty of production APIs are "RESTish". They will have an endpoint like
+`POST /deals/42/close`, or use POST for reads because the query is too big for
+a URL, or return `200 OK` with an error inside the body.
+
+This is not a reason to complain. It is a reason to **read the documentation
+rather than assume**, and to check two things specifically before you build on
+it:
+
+1. Which operations are safe to retry, since you cannot infer it from the
+   method any more.
+2. How errors are signalled, since a `200` containing `{"error": "..."}` will
+   sail straight through error handling that only checks the status code.
+
+Both of those are the next two lessons.
+
+## What to take away
+
+The shape is worth internalising because it makes every future API cheap. But
+the part that will actually change your work is the retry question. Before you
+wire any request into an automation, ask what happens if it runs twice — and if
+the answer is "the client gets two of something", make sure you have an
+idempotency key or a check-before-create step.

@@ -1,0 +1,316 @@
+---
+title: "API Authentication"
+summary: "API keys, bearer tokens and OAuth — what each one actually proves, how to tell which you are dealing with, and how to hold a client's credentials without becoming the reason they get breached."
+duration: 40
+difficulty: foundation
+status: complete
+lastReviewed: "2026-08-12"
+objectives:
+  - "Identify which authentication scheme an API uses from its documentation"
+  - "Explain the difference between authentication and authorisation, and why scopes matter"
+  - "Describe the OAuth authorisation-code flow well enough to explain it to a client"
+  - "Store and rotate client credentials without ever committing one"
+  - "Decide what to do when a credential is exposed"
+prerequisites:
+  - "term-1/apis-and-webhooks/reading-api-documentation"
+xp: 15
+skillXp:
+  api: 30
+  security: 40
+terminology:
+  - term: "Authentication"
+    definition: "Proving who you are."
+    plainEnglish: "Who are you?"
+  - term: "Authorisation"
+    definition: "Determining what you are allowed to do once you have proven who you are."
+    plainEnglish: "What are you allowed to touch?"
+  - term: "API key"
+    definition: "A long secret string that identifies and authenticates a caller. Usually long-lived and often carries full account access."
+  - term: "Bearer token"
+    definition: "A credential sent in the Authorization header that grants access to whoever holds it — the bearer — with no further proof required."
+  - term: "OAuth"
+    definition: "A protocol that lets a user grant your application limited access to their account on another service, without giving you their password."
+  - term: "Scope"
+    definition: "A named permission attached to a token, limiting what it can do — for example read-only access to contacts but not to invoices."
+  - term: "Refresh token"
+    definition: "A long-lived credential used to obtain new short-lived access tokens without asking the user to log in again."
+  - term: "Least privilege"
+    definition: "Granting a credential the narrowest set of permissions that still lets it do its job."
+commonMistakes:
+  - mistake: "Treating an API key as a password that only you will ever see."
+    correction: "An API key is a credential to the client's business, and it will pass through more hands than you expect."
+    why: "It arrives as a string in an email and looks like configuration rather than a secret, so it gets treated like a setting — pasted into a ticket, a chat, a screenshot."
+  - mistake: "Requesting full access because the scopes list is confusing."
+    correction: "Request the narrowest scopes that do the job, and add more when something fails."
+    why: "Full access always works, so it removes a debugging step under time pressure. The cost only appears if the token leaks — at which point the scope you chose decides how bad the day is."
+  - mistake: "Assuming a token that works today will work next month."
+    correction: "Find out the lifetime. Access tokens usually expire; some refresh tokens do too."
+    why: "Nothing in the successful response tells you when it stops working, so the failure arrives weeks later with no obvious cause."
+  - mistake: "Rotating a leaked key and considering the matter closed."
+    correction: "Rotate, then check what the old credential did while it was exposed."
+    why: "Rotation feels like the fix because it stops future access. It says nothing about what already happened."
+securityNote: "Never commit a credential, never paste one into a chat window — including a chat with an AI assistant — and never let one appear in a screenshot. Credentials belong in environment variables, or in the secret store of whatever platform runs the automation. If a key does get exposed, rotating it is the first step and not the last: assume it was used, check the account's audit log for the exposure window, and tell the client. A client can forgive a mistake you reported. They will not forgive finding out from someone else."
+reviewConcepts:
+  - key: authn-vs-authz
+    prompt: "What is the difference between authentication and authorisation, and why does an integration builder care?"
+    answer: "Authentication proves who you are; authorisation decides what you may do. You care because a token that authenticates successfully can still be refused — a 401 means your credential was not accepted, a 403 means it was accepted and the answer is still no. Confusing them sends you off rotating a perfectly good key when the real fix is a missing scope."
+  - key: auth-schemes
+    prompt: "Name the three authentication schemes you will meet, and what distinguishes them."
+    answer: "An API key is a long-lived string identifying your application, usually with broad access and no user involved. A bearer token is sent in the Authorization header and grants access to whoever holds it, typically short-lived. OAuth is a flow in which the user grants your application scoped access to their account without sharing their password, producing an access token plus a refresh token. The practical distinction is who the credential represents: an API key is you, an OAuth token is the user who consented."
+  - key: oauth-flow
+    prompt: "Walk through the OAuth authorisation-code flow as you would explain it to a non-technical client."
+    answer: "You send the client to the vendor's own login page. They log in there — you never see the password — and are shown exactly what your application is asking to do. If they agree, the vendor sends them back to your application with a one-time code. Your server swaps that code for an access token, using a secret only your server knows. You then act on their behalf, only within what they agreed to, and they can revoke it at any time from their own account settings."
+  - key: credential-hygiene
+    prompt: "A client emails you an API key for their CRM. What happens next?"
+    answer: "It goes into an environment variable or the platform's secret store immediately, and never into code, a ticket, a chat or a screenshot. If the vendor supports scoped keys, ask for one limited to what the integration needs rather than a full-access key. Note where it is stored and who has access, because at handover the client needs to know how to rotate it. And treat the email itself as an exposure — it is now a credential sitting in two mailboxes."
+quiz:
+  - id: which-scheme
+    type: multiple-choice
+    prompt: "The documentation says: \"Send your token in the Authorization header as `Authorization: Bearer sk_live_...`. Tokens do not expire.\" What are you dealing with?"
+    reviewConcept: auth-schemes
+    options:
+      - text: "An API key, transported using the bearer scheme."
+        correct: true
+        why: "Correct, and the detail that gives it away is 'do not expire'. Bearer is the transport; a non-expiring, application-level secret is an API key regardless of the header it travels in. Treat it as long-lived and high-value."
+      - text: "OAuth, because it uses a bearer token."
+        correct: false
+        why: "OAuth produces bearer tokens, but the reverse does not follow. OAuth involves a user consenting and yields short-lived access tokens plus a refresh token — neither of which is described here."
+      - text: "Basic authentication."
+        correct: false
+        why: "Basic auth sends a base64-encoded username and password as `Authorization: Basic ...`. Different scheme keyword, different credential."
+      - text: "A session token, since it goes in a header."
+        correct: false
+        why: "Session tokens are issued after a login and are tied to a user's browsing session. A non-expiring secret in the documentation is application-level, not session-level."
+  - id: four-oh-one-vs-four-oh-three
+    type: debugging
+    prompt: "Your integration has been working for a month. This morning, one endpoint starts returning 403 while the others still return 200. What is the most likely cause?"
+    reviewConcept: authn-vs-authz
+    options:
+      - text: "The token is valid but lacks the scope that endpoint requires."
+        correct: true
+        why: "Correct. The 200s prove the credential itself is fine — it is being accepted. A 403 on one endpoint is an authorisation problem, and a scope narrower than the endpoint needs is the usual reason. Someone may also have tightened permissions on the account."
+      - text: "The token has expired."
+        correct: false
+        why: "An expired token fails everywhere, and with 401 rather than 403. The other endpoints returning 200 rules this out."
+      - text: "The key was rotated and you have the old one."
+        correct: false
+        why: "Same reasoning — a rotated key fails on every endpoint. Partial failure points at permissions, not identity."
+      - text: "You are being rate limited."
+        correct: false
+        why: "Rate limiting is 429, and usually comes with a Retry-After header. 403 is a refusal on permission grounds, not a request to slow down."
+  - id: scope-choice
+    type: scenario
+    prompt: "You are building an automation that reads new deals from a client's CRM and posts a summary to their team chat. The CRM offers scopes: `contacts.read`, `contacts.write`, `deals.read`, `deals.write`, `admin`. Which do you request?"
+    reviewConcept: credential-hygiene
+    options:
+      - text: "`deals.read` only."
+        correct: true
+        why: "Correct. The automation reads deals and writes nothing to the CRM. If this token leaks, the worst case is that someone can read deals — bad, but survivable, and enormously better than the alternatives."
+      - text: "`deals.read` and `contacts.read`, since deals reference contacts."
+        correct: false
+        why: "Defensible only if you have confirmed the deal payload lacks the contact name you need. Start narrow and widen when something actually fails — that failure is one minute of work and tells you exactly what the integration requires."
+      - text: "`admin`, so nothing breaks later when the scope needs to change."
+        correct: false
+        why: "This is the choice made under deadline pressure, and it is the one that turns a leaked token into a full compromise of the client's CRM. Widening a scope later is a five-minute job."
+      - text: "`deals.read` and `deals.write`, in case you need to mark deals as processed."
+        correct: false
+        why: "Speculative write access. If you later need to mark deals, ask for the scope then — and reconsider, since tracking processed items on your side avoids granting write access to their system at all."
+  - id: leaked-key-response
+    type: short-answer
+    prompt: "You discover an API key for a client's accounting system was committed to a public repository nine days ago. Write what you do, in order, and what you tell the client."
+    reviewConcept: credential-hygiene
+    rubric:
+      - "Rotates the credential first, before investigating"
+      - "Checks the audit log for the full exposure window rather than assuming no use"
+      - "Removes the key from the repository and understands that history rewriting alone is insufficient — it must be treated as compromised regardless"
+      - "Tells the client promptly, with specifics: what was exposed, for how long, and what was found"
+    modelAnswer: "Rotate the key immediately — that stops any further use and costs nothing but a redeploy. Then check the accounting system's audit log across the full nine days for activity that was not my integration: unfamiliar IPs, calls at odd hours, endpoints my automation never touches. Remove the key from the repository, but treat it as permanently compromised regardless of whether I rewrite history, because it has been cloned, cached and scraped by bots that watch public commits within minutes. Then call the client the same day: what was exposed, that it was live for nine days, exactly what I found in the log, and that it has been rotated. If the audit log shows anything I cannot account for, that becomes their incident, not just mine, and they may have reporting obligations. A client can forgive a mistake I brought them. They cannot forgive finding out from their accountant."
+    points: 5
+practicalTask:
+  title: "Authenticate against two APIs and document the difference"
+  brief: "Pick two APIs that use different schemes — one API key or bearer token, one OAuth. Make one successful authenticated call against each, using a sandbox where available. Store both credentials in environment variables, never in a file you could commit. Then write up: which scheme each used, what you had to do to get a working credential, how long it lasts, what scopes you requested and why, and what you would tell a client about keeping that credential safe. Redact every credential in the write-up."
+  estimatedMinutes: 90
+  rubric:
+    - "Both calls succeed, evidenced by a redacted response"
+    - "Credentials are in environment variables — states explicitly where they are stored and confirms nothing was committed"
+    - "Explains the OAuth flow in the learner's own words, including what the user sees"
+    - "Names the scopes requested and justifies each as least privilege"
+    - "States the lifetime of each credential and what happens when it expires"
+    - "Includes a plain-English paragraph suitable for sending to a non-technical client"
+  evidence:
+    - written
+    - screenshot
+  xp: 140
+  skillXp:
+    api: 50
+    security: 55
+labs:
+  - identify-exposed-api-key
+software:
+  - postman
+resources:
+  - label: "OAuth 2.0 — Authorization Code Grant"
+    url: "https://oauth.net/2/grant-types/authorization-code/"
+    type: docs
+    note: "The flow you will use most. Short, and worth reading before your first OAuth integration rather than during it."
+  - label: "OWASP — Secrets Management Cheat Sheet"
+    url: "https://cheatsheetseries.owasp.org/cheatsheets/Secrets_Management_Cheat_Sheet.html"
+    type: article
+    note: "Practical guidance on storing credentials. Skim the principles; the tool-specific sections can wait."
+---
+
+Every API call you make on behalf of a client carries a credential to that
+client's business. Their customer list, their invoices, their bookings. It is
+worth understanding what you are holding.
+
+## Two different questions
+
+**Authentication** asks *who are you*. **Authorisation** asks *what are you
+allowed to do*.
+
+They are separate, and separating them is not pedantry — it is a debugging
+shortcut you will use constantly:
+
+- `401 Unauthorized` — your credential was not accepted. Wrong key, expired
+  token, malformed header. **Identity problem.**
+- `403 Forbidden` — your credential was accepted and the answer is still no.
+  Missing scope, insufficient permissions. **Permission problem.**
+
+The names are unhelpfully swapped from what you would expect, which is a known
+wart in HTTP. Learn the pair once: **401 means we do not know you, 403 means we
+know you and no.**
+
+When one endpoint fails with 403 while others succeed, you are not looking at a
+credential problem at all. Rotating the key will not help.
+
+## The three schemes
+
+### API keys
+
+A long string, sent with each request:
+
+```
+Authorization: Bearer sk_live_51H...
+X-API-Key: 8f4c2e...
+```
+
+Simple, and the most common thing you will meet on small-business software.
+Two things to know:
+
+They usually do not expire, which is convenient and means an exposed key stays
+dangerous indefinitely.
+
+They usually carry **broad access**. Many vendors issue one key per account
+with full permissions. Some offer scoped or restricted keys — always ask, and
+always take the narrower one.
+
+### Bearer tokens
+
+"Bearer" means what it sounds like: whoever holds it, gets in. There is no
+second factor and no proof of identity beyond possession of the string.
+
+This is why transport matters. A bearer token over plain HTTP is readable by
+anything between you and the server. Always HTTPS, always in a header, never in
+a query string — a query string ends up in server logs, proxy logs, browser
+history and the `Referer` header sent to third parties.
+
+### OAuth
+
+OAuth solves a problem the first two do not: **letting a user grant your
+application access to their account without giving you their password.**
+
+The flow you will use is the authorisation code grant. Explained the way you
+would explain it to a client:
+
+1. You send them to the vendor's own login page — HubSpot's, Google's, Xero's.
+2. They log in **there**. You never see the password.
+3. The vendor shows them exactly what your application is asking to do:
+   "Ascend Automation wants to read your contacts."
+4. If they agree, the vendor sends them back to your application with a
+   one-time code.
+5. Your **server** swaps that code for an access token, using a client secret
+   only your server knows.
+6. You act on their behalf, within what they agreed, until they revoke it.
+
+Two properties make this worth the extra work. The client never hands over a
+password, and they can revoke your access from their own settings without
+involving you. Both are things you can say in a sales conversation, and both
+are true.
+
+The cost: OAuth is more work to set up. You need a registered application, a
+redirect URL, and sometimes a review by the vendor before you can use it with
+real customers. **Find this out during scoping, not during delivery** — vendor
+review can take weeks.
+
+### Access tokens and refresh tokens
+
+OAuth gives you two things. The **access token** is short-lived — often an
+hour — and is what you send with requests. The **refresh token** is long-lived
+and is used to get a new access token when the old one expires.
+
+The implication for automation: your integration must handle expiry. A workflow
+that fetches a token once and holds it will work perfectly in testing and fail
+in the middle of the night, some time after you have moved on.
+
+## Scopes, and why narrow is worth the friction
+
+A scope is a permission attached to a token: `contacts.read`, `deals.write`,
+`admin`.
+
+The temptation is to request everything. Full access always works, and under
+deadline pressure it removes a debugging step. The reason not to is simple: if
+that credential leaks, the scope you chose is the difference between "somebody
+could read their deal names" and "somebody could delete their customer
+database".
+
+Start with the narrowest scope you think will work. When something fails with
+403, widen it. That failure costs a minute and tells you precisely what the
+integration needs — which is also what you will write in the handover
+document.
+
+## Holding a client's credentials
+
+You will be given credentials to systems containing a business's most sensitive
+data. Treat them accordingly.
+
+**Never commit one.** Environment variables, or the secret store of whatever
+platform runs the automation. Bots scrape public commits for credential
+patterns within minutes of a push.
+
+**Never paste one into a chat**, including a chat with an AI assistant. Chats
+are logged, searchable, and often retained.
+
+**Never let one into a screenshot.** This is the one people miss — a screenshot
+of a working configuration, sent to show progress, with the key in frame.
+
+**Ask for scoped keys** where the vendor supports them.
+
+**Document where it lives**, so the client can rotate it after you hand over.
+An integration whose credentials only you can change is a dependency you have
+created for them, not a service.
+
+## When it leaks
+
+It will happen to someone you work with, and possibly to you. The response
+matters more than the mistake.
+
+1. **Rotate immediately.** Before investigating. Rotation stops future use and
+   costs a redeploy.
+2. **Check the audit log** for the whole exposure window. Rotation says nothing
+   about what already happened, and "I rotated it" is not an answer to "was it
+   used".
+3. **Treat it as compromised regardless of cleanup.** Rewriting git history
+   does not un-scrape a key that was public for nine days.
+4. **Tell the client the same day.** What was exposed, for how long, what you
+   found, what you have done.
+
+That last step is the one people delay, and delaying it is what turns a
+recoverable mistake into a lost client. A client can forgive an error you
+brought to them. They will not forgive finding out from their accountant.
+
+## What to take away
+
+401 is identity, 403 is permission. API keys are long-lived and usually
+over-privileged. OAuth costs more to build and gives the client control they
+can see. Request the narrowest scope that works. And handle the leak you hope
+never happens by deciding, now, that you will report it the same day.

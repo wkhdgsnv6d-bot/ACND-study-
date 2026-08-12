@@ -1,0 +1,324 @@
+---
+title: "Status Codes and Error Handling"
+summary: "Reading what the server actually told you — the status code families, the errors worth retrying and the ones that will never succeed, and why an automation that swallows failures is worse than one that stops."
+duration: 35
+difficulty: foundation
+status: complete
+lastReviewed: "2026-08-12"
+objectives:
+  - "Interpret any status code from its family, without memorising the list"
+  - "Separate errors worth retrying from errors that will never succeed"
+  - "Read an error body to find the actual cause rather than guessing"
+  - "Design an automation that fails visibly instead of silently"
+prerequisites:
+  - "term-1/apis-and-webhooks/authentication"
+xp: 15
+skillXp:
+  api: 35
+  automation: 25
+terminology:
+  - term: "Status code"
+    definition: "A three-digit number in every HTTP response indicating broadly what happened. The first digit gives the family."
+  - term: "Transient error"
+    definition: "A failure caused by a temporary condition — a timeout, an overloaded server, a rate limit — that may succeed if tried again."
+  - term: "Permanent error"
+    definition: "A failure caused by something wrong with the request itself, which will fail identically no matter how many times it is retried."
+  - term: "Exponential backoff"
+    definition: "Waiting progressively longer between retries — one second, then two, then four — rather than retrying at a fixed interval."
+  - term: "Jitter"
+    definition: "A small random amount added to a backoff delay, so that many clients recovering from the same outage do not all retry in the same instant."
+  - term: "Dead letter"
+    definition: "A place failed items are put after retries are exhausted, so they can be inspected and reprocessed rather than lost."
+commonMistakes:
+  - mistake: "Retrying every failure."
+    correction: "Retry 5xx, 429 and network timeouts. Never retry 400, 401, 403 or 422."
+    why: "A retry loop is a single setting in most automation platforms, and turning it on feels like resilience — so it gets applied to everything, hammering an endpoint that was never going to accept the request."
+  - mistake: "Checking only the status code and ignoring the response body."
+    correction: "The body usually names the exact field that was wrong. Read it before changing anything."
+    why: "The status code is the thing the platform surfaces, so it is often the only thing seen — and 400 alone tells you nothing about which of twelve fields is the problem."
+  - mistake: "Catching errors and continuing, so the workflow shows green."
+    correction: "A workflow that hides failures is worse than one that stops, because the client trusts it."
+    why: "Suppressing an error makes the immediate symptom disappear, which under deadline pressure feels like progress."
+  - mistake: "Assuming a 200 means it worked."
+    correction: "Some APIs return 200 with an error in the body. Check the body shape on any API you have not verified."
+    why: "It violates the convention so completely that it does not occur to people to test for it."
+securityNote: "Error messages are for you, not for the client's customers. A raw API error surfaced into a public-facing form can leak internal field names, database structure, stack traces or vendor identities that help an attacker map the system. Log the detail where only you can see it; show the person a plain sentence and a way to get help."
+reviewConcepts:
+  - key: status-families
+    prompt: "What do the 2xx, 4xx and 5xx families mean, and who is at fault in each?"
+    answer: "2xx means it worked. 4xx means the request was wrong — your fault, and it will fail identically if repeated unchanged. 5xx means the server failed while handling a request that may have been perfectly valid — their fault, and worth retrying. The fault line between 4xx and 5xx is the one that matters operationally: it decides whether you fix your request or wait and try again."
+  - key: retry-policy
+    prompt: "Which failures should an automation retry, which should it never retry, and how should it space the attempts?"
+    answer: "Retry 5xx, 429 and network timeouts — all transient. Never retry 400, 401, 403 or 422, because the request itself is wrong and will fail the same way every time. Space attempts with exponential backoff plus jitter: one second, two, four, each with a small random offset so that everything recovering from the same outage does not stampede the server at the same instant. Honour Retry-After when the server sends it — that is the server telling you exactly how long to wait."
+  - key: visible-failure
+    prompt: "Why is an automation that swallows errors worse than one that stops?"
+    answer: "Because the client trusts it. A workflow that stops is a problem you find in an hour; a workflow that catches every error and continues shows green while doing nothing, and gets discovered weeks later by a customer who never got their confirmation. The silent version also destroys the evidence needed to fix it. Failures must be visible somewhere a human looks, and unprocessed items must land somewhere they can be replayed."
+quiz:
+  - id: family-reading
+    type: multiple-choice
+    prompt: "You get a 502 from a client's CRM at 3am. What does that tell you?"
+    reviewConcept: status-families
+    options:
+      - text: "Their server or something in front of it failed. The request was probably fine, and it is worth retrying."
+        correct: true
+        why: "Correct. 5xx is a server-side failure — a 502 specifically means a gateway got an invalid response from upstream. Your request never got a fair hearing, so retrying with backoff is the right response."
+      - text: "Your request was malformed and needs fixing."
+        correct: false
+        why: "That is the 4xx family. A malformed request gives 400 or 422, and retrying it unchanged will fail identically."
+      - text: "Your credentials expired."
+        correct: false
+        why: "That is 401. Worth checking if it were happening — but a 502 is the server failing, not your identity being rejected."
+      - text: "You exceeded the rate limit."
+        correct: false
+        why: "That is 429, usually with a Retry-After header. Also retryable, but a different cause and a different wait."
+  - id: which-to-retry
+    type: multi-select
+    prompt: "Which of these should your automation retry automatically?"
+    reviewConcept: retry-policy
+    options:
+      - text: "503 Service Unavailable"
+        correct: true
+        why: "Transient by definition — the server is telling you it cannot serve right now. Retry with backoff, and honour Retry-After if present."
+      - text: "429 Too Many Requests"
+        correct: true
+        why: "Retry, but only after waiting. The Retry-After header, when present, is the server telling you exactly how long — obey it rather than guessing."
+      - text: "A connection timeout with no response at all"
+        correct: true
+        why: "Retryable, with a caveat that matters: you do not know whether the server processed it. Safe for GET, PATCH and DELETE; for POST you need an idempotency key or a check-before-create, or the retry creates a duplicate."
+      - text: "422 Unprocessable Entity"
+        correct: false
+        why: "Permanent. The server understood the request and rejected its contents — a missing required field, a malformed date. Retrying identical data produces an identical rejection forever."
+      - text: "401 Unauthorized"
+        correct: false
+        why: "Permanent, with one exception worth building for: if you hold a refresh token, the correct response is to refresh once and retry once. Blind retrying of a bad credential can get your application locked out."
+  - id: read-the-body
+    type: debugging
+    prompt: "You send a request to create a contact and get this back. What is wrong, and what do you do?"
+    reviewConcept: retry-policy
+    code: |
+      HTTP/1.1 422 Unprocessable Entity
+      Content-Type: application/json
+
+      {
+        "error": "validation_failed",
+        "details": [
+          { "field": "phone", "message": "must be in E.164 format, e.g. +61412345678" }
+        ]
+      }
+    codeLang: http
+    options:
+      - text: "The phone number format is wrong. Fix the format in the workflow and resend — do not retry as-is."
+        correct: true
+        why: "Correct, and the body told you the field and the expected format. This is a permanent error: the same payload will be rejected every time. The fix is a transformation step before the request, not a retry."
+      - text: "Retry with exponential backoff — 422 is a server problem."
+        correct: false
+        why: "422 is in the 4xx family, so the request is the problem. Retrying an unprocessable payload just fails more slowly and, on a rate-limited API, can escalate to 429."
+      - text: "The endpoint is wrong; a 422 means the resource does not exist."
+        correct: false
+        why: "That is 404. A 422 means the endpoint was found and the request was understood — its contents were rejected."
+      - text: "Skip that record and continue, so the workflow does not fail."
+        correct: false
+        why: "This is exactly the silent-failure trap. The contact is lost and nobody knows. Skip it if you must, but write it to a dead-letter store and surface a count somewhere a human will see."
+  - id: silent-failure-design
+    type: client-simulation
+    prompt: "A client asks: \"Why did the automation stop instead of just skipping the bad records and carrying on?\" Answer them."
+    reviewConcept: visible-failure
+    rubric:
+      - "Explains that skipping silently means data is lost with nobody knowing"
+      - "Distinguishes stopping from failing invisibly — the point is visibility, not fragility"
+      - "Offers the real design: continue, but record failures and surface them"
+      - "Is written in plain language a non-technical owner would follow"
+    modelAnswer: "Because if it had skipped them, you would never have known. The five bookings that failed would have simply not existed in your CRM, and the first sign would have been a customer ringing about a confirmation they never got — probably weeks from now, with no record of what went missing. Stopping is loud and slightly annoying; silence is expensive. That said, stopping the whole run is not the only option and not what I would build long-term. The right design keeps processing the good records, puts the failed ones in a holding area with the reason attached, and sends you a short summary — 'four hundred and twelve synced, five failed, here they are'. You get the benefit of it carrying on, and nothing disappears. I would rather you be told about five failures than reassured by a green tick that means nothing."
+    points: 5
+practicalTask:
+  title: "Build a retry and failure policy for a real integration"
+  brief: "Take an integration you have built or are planning — even a small one. Write its error-handling policy: list every failure the API can realistically return, classify each as transient or permanent, and state what your automation does in each case. Include the backoff schedule, the maximum number of attempts, where failed items go, and who finds out. Then deliberately trigger at least two real failures against a sandbox — a bad credential and a malformed payload are easy — and capture what the platform actually did, versus what your policy says it should."
+  estimatedMinutes: 75
+  rubric:
+    - "Lists realistic failure modes for the specific API, not a generic status-code table"
+    - "Classifies each as transient or permanent with a stated reason"
+    - "Specifies a concrete backoff schedule and attempt cap, not just 'retry'"
+    - "Names where failed items land and how they are reprocessed"
+    - "Names who is notified, through what channel, and how quickly"
+    - "Shows evidence of at least two deliberately triggered failures and what actually happened"
+  evidence:
+    - written
+    - screenshot
+  xp: 130
+  skillXp:
+    api: 45
+    automation: 50
+labs:
+  - debug-api-response
+software:
+  - n8n
+  - postman
+resources:
+  - label: "MDN — HTTP response status codes"
+    url: "https://developer.mozilla.org/en-US/docs/Web/HTTP/Status"
+    type: docs
+    note: "The full list. Do not memorise it — learn the families and look up the specific code when you meet it."
+  - label: "Google SRE Book — Handling Overload"
+    url: "https://sre.google/sre-book/handling-overload/"
+    type: article
+    note: "Where the backoff-and-jitter advice comes from, and why naive retries make outages worse rather than better."
+---
+
+An API tells you what happened twice: once in the status code, and once in the
+body. Most people read the first and skip the second, then spend an hour
+guessing at something the response already said.
+
+## Read the first digit
+
+There are dozens of status codes. You do not need to memorise them, because the
+first digit tells you almost everything.
+
+**2xx — it worked.** `200 OK`, `201 Created` for something new, `204 No
+Content` for a successful delete with nothing to return.
+
+**3xx — go somewhere else.** Redirects. Most HTTP clients follow them
+automatically. Worth noticing if an API redirects `http` to `https`, because
+some clients drop the `Authorization` header across a redirect and you get a
+mysterious 401.
+
+**4xx — the request was wrong. Your fault.** It will fail identically if you
+send it again unchanged.
+
+**5xx — the server failed. Their fault.** Your request may have been perfect.
+Worth retrying.
+
+That 4xx/5xx line is the one that matters operationally, because it decides
+whether you fix something or wait.
+
+### The 4xx codes worth knowing by name
+
+- **400 Bad Request** — malformed. Broken JSON, wrong type.
+- **401 Unauthorized** — we do not know you. Bad or expired credential.
+- **403 Forbidden** — we know you, and no. Missing scope.
+- **404 Not Found** — no such resource. Also, frequently, a wrong URL.
+- **409 Conflict** — clashes with current state. Duplicate email, version
+  mismatch.
+- **422 Unprocessable Entity** — understood, but the contents are invalid. A
+  missing required field, a date in the wrong format. The most informative 4xx,
+  because the body almost always names the field.
+- **429 Too Many Requests** — rate limited. The odd one out: a 4xx that
+  **is** worth retrying, after waiting.
+
+### The 5xx codes
+
+- **500 Internal Server Error** — something broke on their side.
+- **502 Bad Gateway** — a proxy got an invalid response from upstream.
+- **503 Service Unavailable** — temporarily unable to serve. Often deployment
+  or overload.
+- **504 Gateway Timeout** — a proxy waited for upstream and gave up.
+
+For your purposes these are one thing: *the server failed, try again shortly.*
+
+## The body is where the answer is
+
+`422` tells you the payload was rejected. It does not tell you which of your
+twelve fields caused it. The body does:
+
+```json
+{
+  "error": "validation_failed",
+  "details": [
+    { "field": "phone", "message": "must be in E.164 format, e.g. +61412345678" }
+  ]
+}
+```
+
+That is a complete diagnosis, and it takes a second to read. The habit worth
+building is: **look at the body before you change anything.** Most automation
+platforms show you the status prominently and hide the body one click away,
+which is precisely backwards.
+
+## Retry the right things
+
+A retry setting is one toggle in most automation platforms, which is why it so
+often ends up applied to everything.
+
+**Retry:** 5xx, 429, network timeouts.
+**Never retry:** 400, 401, 403, 404, 422.
+
+Retrying a 422 does not fix the missing field. It just fails more slowly, and
+on a rate-limited API it can escalate into a 429 — turning a clear error into a
+confusing one.
+
+One exception worth building deliberately: on a `401`, if you hold a refresh
+token, refresh once and retry once. Beyond that, stop — repeatedly presenting a
+bad credential is how applications get locked out.
+
+### Backoff and jitter
+
+When you do retry, wait longer each time:
+
+```
+attempt 1 → wait 1s
+attempt 2 → wait 2s
+attempt 3 → wait 4s
+attempt 4 → wait 8s
+then stop
+```
+
+Add a small random offset — **jitter** — to each wait. The reason is not
+theoretical. When a popular API has a brief outage, every integration in the
+world starts retrying. Without jitter they all retry at the same instant, and
+the stampede keeps the server down. This is a real failure mode with a name,
+and the fix is a few hundred milliseconds of randomness.
+
+If the response carries a `Retry-After` header, **obey it**. That is the server
+telling you exactly how long to wait, and it beats any schedule you invented.
+
+## Failing visibly
+
+Here is the most expensive mistake in this lesson, and it does not look like a
+mistake at the time.
+
+You wrap the API call in error handling so the workflow does not stop. The red
+error disappears. The workflow runs green every day. Six weeks later a customer
+asks why they never got their confirmation, and you discover the integration
+has been failing since the API changed a field name — silently, hundreds of
+times.
+
+**A workflow that stops is a problem you find in an hour. A workflow that hides
+failures is a problem you find in six weeks, from the client.**
+
+Stopping is not the only option, and it is not the best one. What you actually
+want:
+
+1. **Keep processing the good records.** One bad row should not block four
+   hundred good ones.
+2. **Put failures somewhere.** A dead-letter table, a spreadsheet, a Slack
+   channel — anywhere they can be inspected and replayed. The failed item must
+   survive.
+3. **Surface a count.** "412 synced, 5 failed" is a sentence a client can act
+   on. A green tick is not.
+4. **Alert on the pattern, not the instance.** One failure is noise. Five in an
+   hour, or a run where everything failed, is a phone call.
+
+That design gives you the resilience of continuing and none of the blindness.
+
+## The API that returns 200 for errors
+
+Some APIs — usually older ones — return `200 OK` with the failure inside the
+body:
+
+```json
+{ "status": "error", "message": "Invalid customer reference" }
+```
+
+Every convention in this lesson breaks against those. Your status check passes.
+Your monitoring is quiet. The data never arrives.
+
+The only defence is to find out early. When assessing a new API, **deliberately
+send a bad request and look at what comes back.** If it is a 200, you now know
+to check the body shape on every call, and you can say so in the quote — it is
+extra work, and it is work you would otherwise do for free at 3am.
+
+## What to take away
+
+The first digit tells you whose fault it is. The body tells you what to fix.
+Retry 5xx, 429 and timeouts with backoff and jitter; never retry a request the
+server has already understood and rejected. And build for the failure to be
+seen — by you, ideally, and never first by the client's customer.

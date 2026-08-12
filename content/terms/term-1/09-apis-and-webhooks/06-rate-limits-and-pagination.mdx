@@ -1,0 +1,323 @@
+---
+title: "Rate Limits and Pagination"
+summary: "Two constraints that decide whether an integration can exist at all — how many requests you are allowed, and how you retrieve more records than fit in one response without silently losing some."
+duration: 35
+difficulty: foundation
+status: complete
+lastReviewed: "2026-08-12"
+objectives:
+  - "Read an API's rate limit and calculate whether your design fits inside it"
+  - "Respond correctly to a 429, including honouring Retry-After"
+  - "Identify which pagination style an API uses and loop through it without losing records"
+  - "Explain why offset pagination can skip records, and when that matters"
+  - "Design a sync that stays inside limits as a client's data grows"
+prerequisites:
+  - "term-1/apis-and-webhooks/status-codes-and-errors"
+xp: 15
+skillXp:
+  api: 35
+  automation: 25
+terminology:
+  - term: "Rate limit"
+    definition: "A cap on how many requests you may make in a period, enforced by the server."
+  - term: "Throttling"
+    definition: "Deliberately slowing your own request rate to stay inside a limit, rather than sending as fast as possible and being rejected."
+  - term: "Pagination"
+    definition: "Splitting a large collection across multiple responses, each a page."
+  - term: "Offset pagination"
+    definition: "Requesting a page by position — skip 100 records, take the next 50."
+  - term: "Cursor pagination"
+    definition: "Requesting a page by pointer — give me what comes after this marker. Stable when the underlying data changes."
+  - term: "Page drift"
+    definition: "Records skipped or duplicated during offset pagination because the collection changed between requests."
+  - term: "Incremental sync"
+    definition: "Fetching only records changed since the last run, rather than the whole collection each time."
+commonMistakes:
+  - mistake: "Requesting a collection and processing only the first page."
+    correction: "Check for a next page and loop until there is none."
+    why: "The first response looks complete — it is valid JSON containing real records — and on a small test account it genuinely is complete. The bug only appears on a client with more data than your test account had."
+  - mistake: "Using offset pagination on data that is actively changing."
+    correction: "Use cursor pagination when the API offers it, or sort by an immutable field."
+    why: "Offsets are the more intuitive model and the one most people reach for; the skipping only happens when a record is inserted mid-loop, which is invisible unless you count."
+  - mistake: "Treating a 429 as an error to report rather than a signal to wait."
+    correction: "429 means slow down. Honour Retry-After and continue."
+    why: "It arrives in the 4xx family alongside genuine errors, so generic error handling treats it as a failure rather than as flow control."
+  - mistake: "Designing a sync that fits the limit today."
+    correction: "Calculate against the client's data in two years, not this week."
+    why: "It works at handover, which is when it is judged. Growth is what breaks it, and by then it is someone else's problem — or a support call you are not being paid for."
+securityNote: "Rate limits are shared, and often per-account rather than per-integration. An automation that consumes a client's entire quota can break their other systems — their website's live-chat widget, their accounting sync, their reporting dashboard — and the outage will not obviously point at you. Before deploying anything high-volume against a client's account, ask what else uses that API and leave headroom."
+reviewConcepts:
+  - key: rate-limit-maths
+    prompt: "How do you decide whether a proposed integration fits inside an API's rate limit?"
+    answer: "Multiply out the worst realistic case, not the average. Requests per run, times runs per period, plus any per-record calls the design implies — a sync of 500 contacts that fetches details individually is 500 requests, not one. Compare that against the documented limit and check the window it applies to, because 100 per minute and 100 per day are wildly different constraints. Then leave headroom for retries, growth and whatever else already uses that account."
+  - key: pagination-styles
+    prompt: "What are the two main pagination styles, how do you recognise each, and which is safer?"
+    answer: "Offset pagination asks by position — limit and offset, or a page number — and is recognisable by those parameters. Cursor pagination asks for what comes after an opaque marker, usually returned as a next_cursor or a link in the response. Cursor is safer: offsets are positions in a list that can change between requests, so a record inserted mid-loop shifts everything down and you skip one. Cursors point at a place in the data rather than a count, so insertions do not disturb them."
+  - key: sync-design
+    prompt: "What makes a sync survive a client's data growing tenfold?"
+    answer: "Fetching only what changed rather than everything — an incremental sync keyed on an updated-since timestamp or a cursor stored between runs. A full download that works at 500 records is 5,000 requests at 50,000, and it will breach the rate limit, take longer than the interval between runs, and eventually overlap with itself. Incremental syncs stay roughly constant in cost regardless of total data size, because they are proportional to the change, not the corpus."
+quiz:
+  - id: limit-arithmetic
+    type: scenario
+    prompt: "An API allows 100 requests per minute. Your sync fetches a list of contacts (1 request per page of 50) and then fetches full details for each contact individually. The client has 2,000 contacts and wants it to run every 15 minutes. Does it fit?"
+    reviewConcept: rate-limit-maths
+    options:
+      - text: "No — it is roughly 2,040 requests per run, which needs at least 21 minutes at the limit and cannot finish inside a 15-minute cycle."
+        correct: true
+        why: "Correct, and the arithmetic is the point: 40 list pages plus 2,000 detail calls. At 100 per minute that is over 20 minutes, so each run overlaps the next and the backlog grows without bound. The design needs to change, not the schedule."
+      - text: "Yes — 2,000 contacts is only 40 pages of 50."
+        correct: false
+        why: "This counts the list requests and forgets the per-contact detail calls, which are 98% of the traffic. That omission is the single most common error in rate-limit estimates."
+      - text: "Yes, provided you add retry logic."
+        correct: false
+        why: "Retries make it worse, not better. The problem is total volume against a hard ceiling; retrying rejected requests adds to the volume you already cannot afford."
+      - text: "It depends on the response time of each request."
+        correct: false
+        why: "Response time affects wall-clock duration but not the quota. Even with instant responses you cannot exceed 100 per minute, so the ceiling binds regardless of how fast the server is."
+  - id: pagination-recognise
+    type: code-interpretation
+    prompt: "Which pagination style is this API using, and what do you send to get the next page?"
+    reviewConcept: pagination-styles
+    code: |
+      {
+        "data": [ { "id": 1201 }, { "id": 1202 } ],
+        "meta": {
+          "has_more": true,
+          "next_cursor": "eyJpZCI6MTIwMn0"
+        }
+      }
+    codeLang: json
+    options:
+      - text: "Cursor pagination — send the next_cursor value back as a cursor parameter on the following request."
+        correct: true
+        why: "Correct. The opaque next_cursor string and the has_more flag are the signature. Loop while has_more is true, passing the latest cursor each time, and stop when it is false."
+      - text: "Offset pagination — send offset=2 to get the next two records."
+        correct: false
+        why: "There is no offset or page parameter anywhere in the response. Guessing at offsets against a cursor API usually produces either an error or, worse, the same page again."
+      - text: "No pagination — has_more just indicates more data exists somewhere."
+        correct: false
+        why: "has_more is precisely a pagination signal: it exists to tell you the loop is not finished."
+      - text: "Link-header pagination — the next URL is in the response headers."
+        correct: false
+        why: "That style does exist and is common on GitHub's API, but here the marker is in the body. Both are cursor-style in substance; the difference is only where the pointer is carried."
+  - id: offset-drift
+    type: architecture
+    prompt: "You are paginating through 10,000 orders with limit=100 and offset, sorted by newest first. New orders arrive while the loop runs. What goes wrong?"
+    reviewConcept: pagination-styles
+    options:
+      - text: "Each new order shifts everything down a position, so records slide from one page to the next and you skip some entirely."
+        correct: true
+        why: "Correct, and it is silent — every page returns 100 valid records and nothing errors. Sorting newest-first makes it worst, since insertions land at position zero and push the whole list down under you."
+      - text: "Nothing — offsets are positions and the data is fixed once the query starts."
+        correct: false
+        why: "That would require a snapshot for the duration of the loop, which almost no API provides. Each request is a fresh query against data that has moved on."
+      - text: "You get duplicates but never miss anything, so deduplication solves it."
+        correct: false
+        why: "Insertions cause skips, deletions cause duplicates, and real systems do both. Deduplication catches half the problem and hides the fact that the other half is happening."
+      - text: "The API will return an error once the offset exceeds the current total."
+        correct: false
+        why: "It typically returns an empty page and ends the loop cleanly. The missing records are simply never fetched, and nothing anywhere reports a problem."
+  - id: growth-design
+    type: short-answer
+    prompt: "A client's contact list will grow from 2,000 to perhaps 40,000 over the next two years. Describe how you would design the sync so it still works then, and what you would tell the client now."
+    reviewConcept: sync-design
+    rubric:
+      - "Proposes an incremental sync keyed on a stored timestamp or cursor rather than a full download"
+      - "Explains why the cost stays roughly constant as the dataset grows"
+      - "Addresses the first run, which is unavoidably large"
+      - "Says something concrete to the client about limits, growth or usage cost"
+    modelAnswer: "I would make it incremental rather than a full download: store the timestamp of the last successful run and ask only for records updated since then. That way the cost tracks how much changed, not how much exists — twenty changes a day is twenty records to process whether they hold 2,000 contacts or 40,000. The first run is the exception and has to walk the whole list once, so I would run it as a one-off backfill, paginated, throttled below the limit, ideally out of hours. I would also store the sync marker durably and handle a run that fails halfway, so it resumes rather than starting again. What I would tell the client: the API allows a fixed number of requests per minute and that budget is shared with anything else they have connected to it, so I want to know what else touches it before I turn this on. And that the design is deliberately sized for where they are going, not where they are today — this is why it costs a little more to build now than the naive version would."
+    points: 5
+practicalTask:
+  title: "Paginate a real collection and measure it"
+  brief: "Against any API with a sandbox, retrieve a collection large enough to span at least three pages — create test records if you need to. Write the loop yourself rather than using a built-in 'fetch all' helper, so you can see the mechanics. Count the records you retrieve and confirm the number matches what the API reports as the total. Then document: which pagination style it uses, how many requests the full retrieval took, what the rate limit is, and how long a full sync would take for a client with fifty times the data."
+  estimatedMinutes: 60
+  rubric:
+    - "Retrieves at least three pages and states the record count retrieved"
+    - "Confirms the retrieved count against the API's reported total, or explains why the API does not report one"
+    - "Correctly identifies the pagination style with evidence from the response"
+    - "States the documented rate limit and the request count used"
+    - "Extrapolates honestly to fifty times the data, including whether it would still fit"
+  evidence:
+    - written
+    - screenshot
+  xp: 110
+  skillXp:
+    api: 45
+    automation: 35
+software:
+  - postman
+  - n8n
+resources:
+  - label: "GitHub REST API — Using pagination"
+    url: "https://docs.github.com/en/rest/using-the-rest-api/using-pagination-in-the-rest-api"
+    type: docs
+    note: "A clear example of link-header pagination, and a good model for how the mechanics should be documented."
+  - label: "Stripe API — Pagination"
+    url: "https://docs.stripe.com/api/pagination"
+    type: docs
+    note: "Cursor pagination done well. Note how the cursor is a record id rather than an opaque blob — easy to reason about while debugging."
+---
+
+Two constraints decide whether an integration is possible at all, and both are
+visible in the documentation before you write anything. People discover them
+after building instead, which is why this lesson exists.
+
+## Rate limits
+
+A rate limit caps how many requests you may make in a period. `100 requests per
+minute`, `1,000 per hour`, `10,000 per day`.
+
+The critical detail is the **window**, because 100 per minute and 100 per day
+differ by a factor of 1,440. Read which one it is before you design anything.
+
+### Do the arithmetic before you quote
+
+Take the design you have in mind, and multiply out the worst realistic case:
+
+> Sync 2,000 contacts every 15 minutes. List them 50 at a time — 40 requests.
+> Then fetch each contact's full detail — 2,000 requests. Total: **2,040 per
+> run.**
+>
+> Limit is 100 per minute. That is over 20 minutes of pure request budget for a
+> job scheduled every 15.
+
+The design does not fit, and no amount of retry logic fixes it. Each run
+overlaps the next and the backlog grows forever.
+
+Notice which number dominates: the per-record calls, not the list. That is
+almost always where the volume is, and almost always what gets forgotten in the
+estimate. If you take one habit from this section, take this: **count the calls
+your design makes per record, not per run.**
+
+### When you hit the limit
+
+You get `429 Too Many Requests`, usually with headers:
+
+```
+HTTP/1.1 429 Too Many Requests
+Retry-After: 30
+X-RateLimit-Limit: 100
+X-RateLimit-Remaining: 0
+X-RateLimit-Reset: 1786982400
+```
+
+`Retry-After` is the server telling you exactly how long to wait. Obey it. It
+beats any backoff schedule you invented, because it is based on information you
+do not have.
+
+`X-RateLimit-Remaining` is more useful still, because it lets you avoid the 429
+entirely — slow down as it approaches zero rather than sprinting into the wall.
+That is **throttling**, and it is the difference between an integration that
+works and one that works between rejections.
+
+### Limits are shared
+
+This is the part that causes a support call you did not expect.
+
+Rate limits are usually **per account**, not per integration. If a client has
+their website chat widget, their accounting sync and your automation all hitting
+the same API, you share one budget. An automation that consumes the whole quota
+breaks their other systems — and nothing about that outage points at you.
+
+Ask what else connects to the API before deploying anything high-volume, and
+leave headroom.
+
+## Pagination
+
+APIs do not return 50,000 records in one response. They return a page, and a way
+to ask for the next.
+
+### The failure mode
+
+The first page is valid JSON containing real records. On your test account,
+which has twelve contacts, it is also *all* the records. Everything works.
+
+Then it runs against a client with 4,000 contacts and processes the first 50.
+
+Nothing errors. The workflow shows green. **Always check for a next page, even
+when testing against data small enough not to have one.**
+
+### Offset pagination
+
+The intuitive model: skip some, take some.
+
+```
+GET /contacts?limit=50&offset=0
+GET /contacts?limit=50&offset=50
+GET /contacts?limit=50&offset=100
+```
+
+Loop until you get a page with fewer records than the limit, or an empty one.
+
+The problem is that an offset is a **position in a list that can change**.
+Insert a record at the top while you are on page 3, and everything shifts down
+one — so the record that was last on page 3 is now first on page 4, and the one
+that was first on page 4 is never returned to anyone.
+
+You skipped a record. No error. Every page had 50 valid entries.
+
+This is worst when sorting newest-first on actively changing data, which is
+exactly what a sync does.
+
+### Cursor pagination
+
+The safer model: *give me what comes after this marker.*
+
+```json
+{
+  "data": [ ... ],
+  "meta": { "has_more": true, "next_cursor": "eyJpZCI6MTIwMn0" }
+}
+```
+
+You send the cursor back to get the next page, and loop while `has_more` is
+true.
+
+A cursor points at a **place in the data**, not a count. Inserting a record does
+not move it. This is why every well-designed modern API uses cursors, and why
+you should prefer them wherever both are offered.
+
+Some APIs put the pointer in a `Link` header rather than the body. Same idea,
+different envelope.
+
+### If you must use offsets
+
+Sort by something immutable and ascending — `id`, or `created_at` — rather than
+by recency. New records then land at the *end*, past the pages you have already
+walked, and cannot shift the ones underneath you.
+
+## Designing for growth
+
+A sync that downloads everything works fine at 500 records and dies at 50,000.
+The fix is to fetch **only what changed**:
+
+```
+GET /contacts?updated_since=2026-08-11T04:00:00Z
+```
+
+Store the timestamp of the last successful run. Ask for changes since then.
+Twenty changes a day costs twenty records to process whether the client has
+2,000 contacts or 40,000 — the cost tracks the *change*, not the *corpus*.
+
+Three details that decide whether this survives contact with reality:
+
+**The first run is different.** It has to walk the whole collection once.
+Treat it as a one-off backfill: paginated, throttled well below the limit,
+ideally out of hours.
+
+**Store the marker durably**, not in memory. A workflow that loses its
+timestamp on restart either re-downloads everything or, worse, silently skips
+the gap.
+
+**Handle a half-finished run.** If the sync fails at record 3,000 of 5,000, it
+must resume rather than either starting over or advancing the marker past
+records it never processed. Only advance the marker on success.
+
+## What to take away
+
+Multiply the arithmetic out before quoting, counting per-record calls. Obey
+`Retry-After` and throttle before you hit the wall. Always loop pages, even
+when testing on data too small to have any. Prefer cursors. And design the sync
+for the client's data in two years, because that is when it will be judged and
+you will not be watching.

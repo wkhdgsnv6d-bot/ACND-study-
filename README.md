@@ -65,6 +65,12 @@ builds it, so the app always tells the truth about what exists.
 
 ## Getting started
 
+To take it from clone to a deployed, working platform, follow
+[`docs/LAUNCH.md`](docs/LAUNCH.md) — Supabase project, migrations, auth
+configuration, deployment and what to check afterwards.
+
+To just run it locally:
+
 ```bash
 npm install
 npm run dev
